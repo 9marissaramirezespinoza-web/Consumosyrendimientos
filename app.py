@@ -4,20 +4,8 @@ import mysql.connector
 from datetime import date, datetime
 import gspread
 from google.oauth2.service_account import Credentials
-
-# ------------------ CONFIG DB ------------------
-DB_HOST = "gateway01.ap-northeast-1.prod.aws.tidbcloud.com"
-DB_PORT = 4000
-DB_USER = "21dAYBizAVcha72.root"
-DB_PASSWORD = "PJwovbR7In1xYCj0"
-DB_NAME = "consumos"
-DB_SSL_CA = "isrgrootx1.pem"  # Certificado para TiDB Cloud
-
-# ------------------ CONFIG GOOGLE SHEETS ------------------
-LINK_EXCEL_NUBE = "https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit?hl=es&gid=0#gid=0"
-ARCHIVO_LLAVE = "credentials.json"
-HOJA_REGISTROS = "REGISTROS"
-PASSWORD_ADMIN = "tec123"
+import json
+import os
 
 st.set_page_config(page_title="Consumos y rendimientos", page_icon="🚛", layout="wide")
 
@@ -39,26 +27,57 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# ------------------ CONFIG DESDE SECRETS ------------------
+# TiDB
+DB_HOST = st.secrets["TIDB_HOST"]
+DB_PORT = int(st.secrets.get("TIDB_PORT", 4000))
+DB_USER = st.secrets["TIDB_USER"]
+DB_PASSWORD = st.secrets["TIDB_PASSWORD"]
+DB_NAME = st.secrets["TIDB_DATABASE"]
+
+# Google Sheets
+LINK_EXCEL_NUBE = st.secrets["SHEETS_URL"]
+HOJA_REGISTROS = st.secrets.get("SHEETS_TAB", "REGISTROS")
+
+# Admin
+PASSWORD_ADMIN = st.secrets.get("ADMIN_PASSWORD", "")
+
+# ------------------ SSL CA (crear archivo desde secrets) ------------------
+def get_ssl_ca_path() -> str:
+    """
+    Streamlit Cloud no trae tu .pem si no lo subes.
+    Aquí lo generamos desde st.secrets["TIDB_SSL_CA_PEM"].
+    """
+    pem_text = st.secrets.get("TIDB_SSL_CA_PEM", "").strip()
+    if not pem_text:
+        return ""  # si tu TiDB no lo requiere, puedes dejarlo vacío
+
+    path = "/tmp/isrgrootx1.pem"
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(pem_text)
+    return path
+
 # ------------------ DB HELPERS (TiDB) ------------------
 def get_connection():
-    """Crea y devuelve una conexión a TiDB."""
-    conn = mysql.connector.connect(
+    ssl_ca_path = get_ssl_ca_path()
+    kwargs = dict(
         host=DB_HOST,
         port=DB_PORT,
         user=DB_USER,
         password=DB_PASSWORD,
         database=DB_NAME,
-        ssl_ca=DB_SSL_CA
     )
-    return conn
+    if ssl_ca_path:
+        kwargs["ssl_ca"] = ssl_ca_path
 
+    return mysql.connector.connect(**kwargs)
 
 def run_select(query, params=None):
     conn = get_connection()
     df = pd.read_sql(query, conn, params=params)
     conn.close()
     return df
-
 
 def run_execute(query, params=None, many=False):
     conn = get_connection()
@@ -71,13 +90,8 @@ def run_execute(query, params=None, many=False):
     cur.close()
     conn.close()
 
-
 @st.cache_data(ttl=300)
 def cargar_catalogo_desde_db():
-    """
-    Carga catálogo de unidades desde TiDB.
-    Renombra columnas para usarlas en la UI.
-    """
     query = """
         SELECT region, plaza, unidad, tipo, modelo, anio, km_inicial
         FROM catalogo_unidades
@@ -95,13 +109,8 @@ def cargar_catalogo_desde_db():
     })
     return df
 
-
 @st.cache_data(ttl=300)
 def obtener_ultimo_km_por_unidad_db():
-    """
-    Devuelve dict {unidad: último_km_final} desde registro_diario.
-    Sirve para el 'km inicial fantasma'.
-    """
     query = """
         SELECT unidad, MAX(km_final) AS ultimo_km
         FROM registro_diario
@@ -115,13 +124,8 @@ def obtener_ultimo_km_por_unidad_db():
         resultado[unidad] = float(ultimo_km)
     return resultado
 
-
 @st.cache_data(ttl=300)
 def cargar_limites_rendimiento():
-    """
-    Carga tabla limites_rendimiento y regresa un dict:
-    {(region,tipo,modelo): (lim_inf, lim_sup)}
-    """
     query = """
         SELECT region, tipo, modelo, limite_superior, limite_inferior
         FROM limites_rendimiento
@@ -139,11 +143,7 @@ def cargar_limites_rendimiento():
         limites[key] = (lim_inf, lim_sup)
     return limites
 
-
 def insertar_registros_diarios(filas):
-    """
-    Inserta múltiples registros en registro_diario en TiDB.
-    """
     query = """
         INSERT INTO registro_diario (
             fecha, region, plaza, unidad, tipo, modelo,
@@ -170,21 +170,21 @@ def insertar_registros_diarios(filas):
     """
     run_execute(query, filas, many=True)
 
-
 # ------------------ GOOGLE SHEETS HELPERS ------------------
+@st.cache_resource
 def get_gspread_client():
     try:
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive"
         ]
-        creds = Credentials.from_service_account_file(ARCHIVO_LLAVE, scopes=scopes)
-        client = gspread.authorize(creds)
-        return client
+        creds_json = st.secrets["GOOGLE_CREDENTIALS_JSON"]
+        creds_info = json.loads(creds_json)
+        creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+        return gspread.authorize(creds)
     except Exception as e:
-        st.warning(f"⚠ No se pudo inicializar Google Sheets ({e}). No se respaldará en Sheets.")
+        st.warning(f"⚠ No se pudo inicializar Google Sheets: {e}")
         return None
-
 
 def obtener_worksheet_por_nombre(name):
     client = get_gspread_client()
@@ -197,24 +197,18 @@ def obtener_worksheet_por_nombre(name):
         st.warning(f"⚠ No se pudo abrir hoja '{name}' en Sheets: {e}")
         return None
 
-
 def fmt_num(x, dec=2):
-    """Redondea número para que no tenga un chingo de ceros."""
     if x is None or x == "":
         return ""
     try:
         x = float(x)
     except:
         return x
-    if x.is_integer():
+    if float(x).is_integer():
         return int(x)
     return round(x, dec)
 
-
 def enviar_filas_a_sheets(filas_sheets):
-    """
-    Agrega filas al Google Sheets (solo append, sin borrar ni formatear).
-    """
     if not filas_sheets:
         return
     ws = obtener_worksheet_por_nombre(HOJA_REGISTROS)
@@ -225,12 +219,11 @@ def enviar_filas_a_sheets(filas_sheets):
     except Exception as e:
         st.warning(f"⚠ No se pudo respaldar en Google Sheets: {e}")
 
-
 # ------------------ SIDEBAR: LOGIN ADMIN ------------------
 with st.sidebar:
     st.header("🔐 Admin")
     pwd = st.text_input("Contraseña", type="password")
-    admin_activo = (pwd == PASSWORD_ADMIN)
+    admin_activo = (pwd == PASSWORD_ADMIN and PASSWORD_ADMIN != "")
     if admin_activo:
         st.success("Admin activo ✅")
     else:
@@ -239,7 +232,6 @@ with st.sidebar:
 # ------------------ ADMIN: SOLO ABRIR GOOGLE SHEETS ------------------
 if admin_activo:
     st.title("Panel de Administración")
-
     st.markdown(
         f'''
         <a href="{LINK_EXCEL_NUBE}" target="_blank">
@@ -248,11 +240,9 @@ if admin_activo:
         ''',
         unsafe_allow_html=True
     )
+    st.stop()
 
-    st.stop()  # No mostrar nada más si es admin
-
-
-# ------------------ UI PRINCIPAL: CAPTURA ------------------
+# ------------------ UI PRINCIPAL ------------------
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
 df_catalogo = cargar_catalogo_desde_db()
@@ -260,57 +250,39 @@ if df_catalogo.empty:
     st.warning("Catálogo vacío en TiDB.")
     st.stop()
 
-# REGION / PLAZA / FECHA (fecha abierta, pero sin futuro)
-c1, c2, c3 = st.columns(3)
-with c1:
-    regiones = sorted(df_catalogo['Region'].dropna().unique().tolist())
-# ===============================
-#   FIJAR REGIÓN DESDE EL LINK
-# ===============================
-
-# Leer parámetro "region" desde la URL usando la API nueva
+# ------------------ REGIÓN FIJA DESDE LINK ------------------
 region_fijada = st.query_params.get("region")
 
-# Lista de regiones del catálogo
-regiones = sorted(df_catalogo['Region'].dropna().unique().tolist())
+regiones = sorted(df_catalogo["Region"].dropna().unique().tolist())
+if not region_fijada:
+    st.error("Falta el parámetro de región en el link. Ejemplo: ?region=REGION_SUR")
+    st.stop()
 
-# Si viene región en el link y es válida:
-if region_fijada and region_fijada in regiones:
+if region_fijada not in regiones:
+    st.error(f"La región '{region_fijada}' no existe en tu catálogo.")
+    st.stop()
 
-    selected_region = region_fijada
-    
-    # Mostrar mensaje para que el usuario sepa que viene fijada en el link
-    st.info(f"Región fijada automáticamente: **{selected_region}**")
+selected_region = region_fijada
+st.info(f"Región fijada automáticamente: **{selected_region}**")
 
-else:
-    # Si no viene región en el link, permitir seleccionar
-    selected_region = st.selectbox("REGIÓN", ["-- seleccionar --"] + regiones)
-
+# PLAZA + FECHA
+c1, c2 = st.columns(2)
+with c1:
+    plazas = sorted(
+        df_catalogo[df_catalogo["Region"] == selected_region]["Plaza"]
+        .dropna().unique().tolist()
+    )
+    selected_plaza = st.selectbox("PLAZA", ["-- seleccionar --"] + plazas)
 
 with c2:
-    if selected_region != "-- seleccionar --":
-        plazas = sorted(
-            df_catalogo[df_catalogo['Region'] == selected_region]['Plaza']
-            .dropna()
-            .unique()
-            .tolist()
-        )
-    else:
-        plazas = []
-    selected_plaza = st.selectbox("PLAZA", ["-- seleccionar --"] + plazas)
-with c3:
     fecha = st.date_input("FECHA", value=date.today())
     if fecha > date.today():
         st.error("❌ No puedes capturar una fecha futura.")
         st.stop()
 
-# Precios (solo si ya eligieron región y plaza)
-precio_magna = 0.0
-precio_premium = 0.0
-precio_gas = 0.0
-precio_diesel = 0.0
-
-if selected_region != "-- seleccionar --" and selected_plaza != "-- seleccionar --":
+# PRECIOS
+precio_magna = precio_premium = precio_gas = precio_diesel = 0.0
+if selected_plaza != "-- seleccionar --":
     p1, p2, p3, p4 = st.columns(4)
     with p1:
         precio_gas = st.number_input("Precio Gas ($)", min_value=0.0, step=0.01, value=0.0)
@@ -325,7 +297,6 @@ st.divider()
 
 # ------------------ TABLA DE CAPTURA ------------------
 if selected_plaza != "-- seleccionar --":
-
     df_unidades = df_catalogo[
         (df_catalogo["Region"] == selected_region) &
         (df_catalogo["Plaza"] == selected_plaza)
@@ -351,7 +322,6 @@ if selected_plaza != "-- seleccionar --":
             "Gasolina Premium (L)": 0.0,
             "Diesel (L)": 0.0,
             "_Modelo": r.get("Modelo", ""),
-            "_Año": r.get("Año", ""),
             "_Tipo": r.get("Tipo", ""),
             "_KM_INI": km_ini
         })
@@ -364,12 +334,9 @@ if selected_plaza != "-- seleccionar --":
         use_container_width=True,
         height=520,
         column_order=[
-            "Unidad",
-            "Km Final",
-            "Gas (L)",
-            "Gasolina Magna (L)",
-            "Gasolina Premium (L)",
-            "Diesel (L)"
+            "Unidad", "Km Final",
+            "Gas (L)", "Gasolina Magna (L)",
+            "Gasolina Premium (L)", "Diesel (L)"
         ]
     )
 
@@ -377,11 +344,11 @@ if selected_plaza != "-- seleccionar --":
         filas_db = []
         filas_sheets = []
         errores = []
-        hora = datetime.now().strftime("%H:%M:%S")  # Solo hora
+        hora = datetime.now().strftime("%H:%M:%S")
 
         historicos = obtener_ultimo_km_por_unidad_db()
 
-        for idx, row in edited.iterrows():
+        for _, row in edited.iterrows():
             unidad = row["Unidad"]
             if not unidad:
                 continue
@@ -390,7 +357,7 @@ if selected_plaza != "-- seleccionar --":
             km_final = row["Km Final"]
 
             if km_final is None or str(km_final).strip() == "":
-                continue  # no guardar si no puso km final
+                continue
 
             try:
                 km_final = float(km_final)
@@ -400,18 +367,12 @@ if selected_plaza != "-- seleccionar --":
                 continue
 
             if km_final <= km_ini:
-                errores.append(
-                    f"{unidad}: Km final ({km_final}) no puede ser menor o igual que Km inicial ({km_ini})."
-                )
+                errores.append(f"{unidad}: Km final ({km_final}) no puede ser <= Km inicial ({km_ini}).")
                 continue
 
             km_rec = km_final - km_ini
-
-            # Alerta si > 1400
             if km_rec > 1400:
-                errores.append(
-                    f"{unidad}: Recorrido {km_rec:.0f} km mayor a 1400 km. Verifique el kilometraje."
-                )
+                errores.append(f"{unidad}: Recorrido {km_rec:.0f} km mayor a 1400 km.")
                 continue
 
             gas_l = float(row["Gas (L)"] or 0)
@@ -429,22 +390,17 @@ if selected_plaza != "-- seleccionar --":
             tipo = str(row["_Tipo"] or "").strip()
             modelo = str(row["_Modelo"] or "").strip()
 
-            # Importes con los precios capturados
             gas_p = gas_l * precio_gas
             g_magna_p = magna_l * precio_magna
             g_premium_p = premium_l * precio_premium
             diesel_p = diesel_l * precio_diesel
-
             total_importe = gas_p + g_magna_p + g_premium_p + diesel_p
 
-            # Límites de rendimiento
             key = (str(selected_region).strip(), tipo, modelo)
-            lim_inf = None
-            lim_sup = None
+            lim_inf = lim_sup = None
             if key in limites_dict:
                 lim_inf, lim_sup = limites_dict[key]
 
-            # Tupla para DB
             filas_db.append((
                 fecha.strftime("%Y-%m-%d"),
                 selected_region,
@@ -464,31 +420,30 @@ if selected_plaza != "-- seleccionar --":
                 hora
             ))
 
-            # Fila para Google Sheets (sin columna ID)
             filas_sheets.append([
-                fecha.strftime("%Y-%m-%d"),          # FECHA
-                selected_region,                     # REGION
-                selected_plaza,                      # PLAZA
-                unidad,                              # UNIDAD
-                tipo,                                # TIPO
-                modelo,                              # MODELO
-                fmt_num(km_ini, 0),                  # KM INICIAL
-                fmt_num(km_final, 0),                # KM FINAL
-                fmt_num(km_rec, 0),                  # KM RECORRIDOS
-                fmt_num(gas_l, 2),                   # GAS (L)
-                fmt_num(gas_p, 2),                   # GAS ($)
-                fmt_num(magna_l, 2),                 # G MAGNA (L)
-                fmt_num(g_magna_p, 2),               # G MAGNA ($)
-                fmt_num(premium_l, 2),               # G PREMIUM (L)
-                fmt_num(g_premium_p, 2),             # G PREMIUM ($)
-                fmt_num(diesel_l, 2),                # DIESEL (L)
-                fmt_num(diesel_p, 2),                # DIESEL ($)
-                fmt_num(total_litros, 3),            # TOTAL LITROS
-                fmt_num(total_importe, 2),           # TOTAL IMPORTE
-                fmt_num(rendimiento, 3),             # RENDIMIENTO REAL
-                fmt_num(lim_sup, 3) if lim_sup is not None else "",  # LIMITE SUPERIOR
-                fmt_num(lim_inf, 3) if lim_inf is not None else "",  # LIMITE INFERIOR
-                hora                                 # HORA REGISTRO
+                fecha.strftime("%Y-%m-%d"),
+                selected_region,
+                selected_plaza,
+                unidad,
+                tipo,
+                modelo,
+                fmt_num(km_ini, 0),
+                fmt_num(km_final, 0),
+                fmt_num(km_rec, 0),
+                fmt_num(gas_l, 2),
+                fmt_num(gas_p, 2),
+                fmt_num(magna_l, 2),
+                fmt_num(g_magna_p, 2),
+                fmt_num(premium_l, 2),
+                fmt_num(g_premium_p, 2),
+                fmt_num(diesel_l, 2),
+                fmt_num(diesel_p, 2),
+                fmt_num(total_litros, 3),
+                fmt_num(total_importe, 2),
+                fmt_num(rendimiento, 3),
+                fmt_num(lim_sup, 3) if lim_sup is not None else "",
+                fmt_num(lim_inf, 3) if lim_inf is not None else "",
+                hora
             ])
 
         if errores:
@@ -498,21 +453,16 @@ if selected_plaza != "-- seleccionar --":
             if not filas_db:
                 st.warning("No hay filas válidas para guardar.")
             else:
-                # 1) Guardar en TiDB
                 try:
                     insertar_registros_diarios(filas_db)
-                    st.success("✅ Registros guardados correctamente en TiDB.")
+                    st.success("✅ Guardado en TiDB.")
                     st.cache_data.clear()
                 except Exception as e:
                     st.error(f"❌ Error guardando en TiDB: {e}")
                     st.stop()
 
-                # 2) Respaldo en Google Sheets (best effort)
-                try:
-                    enviar_filas_a_sheets(filas_sheets)
-                except Exception as e:
-                    st.warning(f"⚠ No se pudo respaldar en Google Sheets: {e}")
-
+                enviar_filas_a_sheets(filas_sheets)
                 st.balloons()
                 st.rerun()
+
 
