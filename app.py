@@ -213,16 +213,16 @@ if st.button("GUARDAR"):
     filas_db = []
     filas_sh = []
     
-  for _, x in ed.iterrows():
-    if not x["Km Final"]:
-        continue
+    for _, x in ed.iterrows():
+        if not x["Km Final"]:
+            continue
 
-    kmr = x["Km Final"] - x["_km"]
+       kmr = x["Km Final"] - x["_km"]
 
-    litros = x.Gas + x.Magna + x.Premium + x.Diesel
-    if litros <= 0:
-        st.error(f"❌ {x.Unidad}: no capturó litros (Gas, Magna, Premium o Diesel)")
-        continue
+       litros = x.Gas + x.Magna + x.Premium + x.Diesel
+       if litros <= 0:
+           st.error(f"❌ {x.Unidad}: no capturó litros (Gas, Magna, Premium o Diesel)")
+           continue
 
     rend = kmr / litros
     li, ls = lims.get((region, x["_tipo"], x["_modelo"]), (None, None))
@@ -259,6 +259,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
