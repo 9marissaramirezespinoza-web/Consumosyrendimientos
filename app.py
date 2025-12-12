@@ -215,7 +215,21 @@ if st.button("GUARDAR✅"):
         if not x["Km Final"]: 
             continue
 
-        kmr = x["Km Final"] - x["_km"]
+        # Validar Km Final
+if x["Km Final"] is None or str(x["Km Final"]).strip() == "":
+    continue
+
+try:
+    km_final = float(x["Km Final"])
+    km_ini = float(x["_km"])
+except:
+    continue
+
+kmr = km_final - km_ini
+
+if kmr <= 0:
+    continue
+
         litros = x.Gas + x.Magna + x.Premium + x.Diesel
         if litros <= 0:
             continue
@@ -242,6 +256,7 @@ if st.button("GUARDAR✅"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
