@@ -2,7 +2,15 @@ import streamlit as st
 import pandas as pd
 import mysql.connector
 from datetime import date, datetime
+import gspread
+from google.oauth2.service_account import Credentials
+import json
 
+# ================== SESSION STATE ==================
+if "guardado_ok" not in st.session_state:
+    st.session_state.guardado_ok = False
+
+# ================== CONFIG ==================
 st.set_page_config(
     page_title="Consumos y rendimientos",
     page_icon="🚛",
@@ -33,6 +41,9 @@ DB_USER = st.secrets["DB_USER"]
 DB_PASSWORD = st.secrets["DB_PASSWORD"]
 DB_NAME = st.secrets["DB_NAME"]
 
+SHEETS_URL = st.secrets.get("SHEETS_URL", "")
+SHEETS_TAB = st.secrets.get("SHEETS_TAB", "REGISTROS")
+
 PASSWORD_ADMIN = "tec123"
 
 # ================== DB ==================
@@ -45,19 +56,16 @@ def get_connection():
         database=DB_NAME
     )
 
-def run_select(query, params=None):
+def run_select(query):
     conn = get_connection()
-    df = pd.read_sql(query, conn, params=params)
+    df = pd.read_sql(query, conn)
     conn.close()
     return df
 
-def run_execute(query, params, many=False):
+def run_execute(query, params):
     conn = get_connection()
     cur = conn.cursor()
-    if many:
-        cur.executemany(query, params)
-    else:
-        cur.execute(query, params)
+    cur.executemany(query, params)
     conn.commit()
     cur.close()
     conn.close()
@@ -87,18 +95,6 @@ def ultimo_km():
     """)
     return {str(r["unidad"]): float(r["km"] or 0) for _, r in df.iterrows()}
 
-@st.cache_data(ttl=300)
-def limites():
-    df = run_select("""
-        SELECT region, tipo, modelo, limite_superior, limite_inferior
-        FROM limites_rendimiento
-    """)
-    return {
-        (str(r["region"]), str(r["tipo"]), str(r["modelo"])):
-        (float(r["limite_inferior"]), float(r["limite_superior"]))
-        for _, r in df.iterrows()
-    }
-
 # ================== INSERT ==================
 def insertar_registros(filas):
     run_execute("""
@@ -126,17 +122,39 @@ def insertar_registros(filas):
             %s,%s,
             %s
         )
-    """, filas, many=True)
+    """, filas)
+
+# ================== GOOGLE SHEETS (BEST EFFORT) ==================
+def enviar_sheets(filas):
+    if not filas or not SHEETS_URL:
+        return
+    try:
+        creds = Credentials.from_service_account_info(
+            json.loads(st.secrets["GOOGLE_CREDENTIALS"]),
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+        client = gspread.authorize(creds)
+        ws = client.open_by_url(SHEETS_URL).worksheet(SHEETS_TAB)
+        ws.append_rows(filas, value_input_option="USER_ENTERED")
+    except Exception:
+        pass  # Sheets NUNCA rompe la app
 
 # ================== ADMIN ==================
 with st.sidebar:
     st.header("🔐 Admin")
     if st.text_input("Contraseña", type="password") == PASSWORD_ADMIN:
-        st.success("Modo administrador")
+        if SHEETS_URL:
+            st.markdown(
+                f'<a href="{SHEETS_URL}" target="_blank">'
+                f'<button class="admin-button">📄 Abrir Google Sheets</button></a>',
+                unsafe_allow_html=True
+            )
         st.stop()
 
 # ================== UI ==================
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
+
+# MENSAJE POST-GUARDADO (SIEMPRE SALE)
 if st.session_state.guardado_ok:
     st.success("✅ Guardado correctamente")
     st.session_state.guardado_ok = False
@@ -163,7 +181,6 @@ region = df[df["REGION_NORM"] == region_param]["Region"].iloc[0]
 
 # -------- Región / Plaza / Fecha --------
 c1, c2, c3 = st.columns(3)
-
 with c1:
     st.info(f"REGIÓN\n\n**{region}**")
 
@@ -187,7 +204,6 @@ precio_diesel = p4.number_input("Precio Diesel $", 0.0)
 
 # ================== CAPTURA ==================
 kms = ultimo_km()
-lims = limites()
 
 rows = []
 for _, r in df[(df.Region == region) & (df.Plaza == plaza)].iterrows():
@@ -209,16 +225,13 @@ for _, r in df[(df.Region == region) & (df.Plaza == plaza)].iterrows():
 ed = st.data_editor(
     pd.DataFrame(rows),
     hide_index=True,
-    column_config={
-        "_km": None,
-        "_tipo": None,
-        "_modelo": None
-    }
+    column_config={"_km": None, "_tipo": None, "_modelo": None}
 )
 
 # ================== GUARDAR ==================
 if st.button("GUARDAR"):
     filas_db = []
+    filas_sh = []
     hora = datetime.now().strftime("%H:%M:%S")
 
     for _, x in ed.iterrows():
@@ -242,7 +255,6 @@ if st.button("GUARDAR"):
 
         kmr = km_final - km_ini
         rend = kmr / litros
-        li, ls = lims.get((region, x["_tipo"], x["_modelo"]), (None, None))
 
         total_importe = (
             gas * precio_gas +
@@ -259,30 +271,20 @@ if st.button("GUARDAR"):
             gas, gas * precio_gas,
             diesel, diesel * precio_diesel,
             litros, total_importe,
-            rend, ls, li, hora
+            rend, None, None, hora
         )
 
         filas_db.append(fila)
+        filas_sh.append(list(fila))
 
     if filas_db:
         insertar_registros(filas_db)
-      if filas_db:
-    try:
-        insertar_registros(filas_db)
-        st.session_state.guardado_ok = True
-    except Exception as e:
-        st.error("❌ Error al guardar en TiDB")
-        st.stop()
-
-    # Google Sheets NO debe romper la app
-    try:
         enviar_sheets(filas_sh)
-    except Exception:
-        pass
+        st.session_state.guardado_ok = True
+        st.rerun()
+    else:
+        st.warning("No hubo registros válidos para guardar")
 
-    st.rerun()
-else:
-    st.warning("No hubo registros válidos para guardar")
 
 
 
