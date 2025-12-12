@@ -162,16 +162,22 @@ if region_param not in df["Region_norm"].unique():
 region = df[df["Region_norm"] == region_param]["Region"].iloc[0]
 
 
-st.info(f"Región: **{region}**")
+c1, c2, c3 = st.columns(3)
 
-plaza = st.selectbox(
-    "PLAZA",
-    sorted(df[df["Region"]==region]["Plaza"].unique())
-)
+with c1:
+    st.info(f"REGIÓN\n\n**{region}**")
 
-fecha = st.date_input("FECHA", date.today())
-if fecha > date.today():
-    st.stop()
+with c2:
+    plaza = st.selectbox(
+        "PLAZA",
+        sorted(df[df["Region"] == region]["Plaza"].unique())
+    )
+
+with c3:
+    fecha = st.date_input("FECHA", date.today())
+    if fecha > date.today():
+        st.error("No puedes capturar fecha futura")
+        st.stop()
 
 # Precios
 c1,c2,c3,c4 = st.columns(4)
@@ -236,6 +242,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
