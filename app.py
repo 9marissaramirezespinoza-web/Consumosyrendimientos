@@ -195,7 +195,7 @@ for _,r in df[(df.Region==region)&(df.Plaza==plaza)].iterrows():
     km_ini = kms.get(r.Unidad, r["Km inicial"] or 0)
     rows.append({
         "Unidad":r.Unidad,"Km Final":None,
-        "Gas(L)":0.0,"Gaslolina Magna(L)":0.0,"Gasolina Premium(L)":0.0,"Diesel(L)":0.0,
+        "Gas(L)":0.0,"Gasolina Magna(L)":0.0,"Gasolina Premium(L)":0.0,"Diesel(L)":0.0,
         "_km":km_ini,"_tipo":r.Tipo,"_modelo":r.Modelo
     })
 
@@ -242,6 +242,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
