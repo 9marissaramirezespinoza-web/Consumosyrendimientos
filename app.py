@@ -6,25 +6,9 @@ import gspread
 from google.oauth2.service_account import Credentials
 import json
 
-# =========================================================
-# CONFIG
-# =========================================================
 st.set_page_config(page_title="Consumos y rendimientos", page_icon="🚛", layout="wide")
 
-DB_HOST = st.secrets["DB_HOST"]
-DB_PORT = int(st.secrets["DB_PORT"])
-DB_USER = st.secrets["DB_USER"]
-DB_PASSWORD = st.secrets["DB_PASSWORD"]
-DB_NAME = st.secrets["DB_NAME"]
-
-ADMIN_PASSWORD = st.secrets["ADMIN_PASSWORD"]
-
-SHEETS_URL = st.secrets["SHEETS_URL"]
-SHEETS_TAB = st.secrets["SHEETS_TAB"]
-
-# =========================================================
-# ESTILOS
-# =========================================================
+# ================== ESTILOS ==================
 st.markdown("""
 <style>
 .block-container { padding-top: 1rem; }
@@ -41,9 +25,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# DB HELPERS
-# =========================================================
+# ================== SECRETS ==================
+DB_HOST = st.secrets["DB_HOST"]
+DB_PORT = int(st.secrets["DB_PORT"])
+DB_USER = st.secrets["DB_USER"]
+DB_PASSWORD = st.secrets["DB_PASSWORD"]
+DB_NAME = st.secrets["DB_NAME"]
+
+SHEETS_URL = st.secrets["SHEETS_URL"]
+SHEETS_TAB = st.secrets.get("SHEETS_TAB", "REGISTROS")
+
+PASSWORD_ADMIN = "tec123"
+
+# ================== DB ==================
 def get_connection():
     return mysql.connector.connect(
         host=DB_HOST,
@@ -53,23 +47,24 @@ def get_connection():
         database=DB_NAME
     )
 
-def run_select(query):
+def run_select(q, p=None):
     conn = get_connection()
-    df = pd.read_sql(query, conn)
+    df = pd.read_sql(q, conn, params=p)
     conn.close()
     return df
 
-def run_execute(query, params):
+def run_execute(q, params, many=False):
     conn = get_connection()
     cur = conn.cursor()
-    cur.executemany(query, params)
+    if many:
+        cur.executemany(q, params)
+    else:
+        cur.execute(q, params)
     conn.commit()
     cur.close()
     conn.close()
 
-# =========================================================
-# DATA
-# =========================================================
+# ================== DATA ==================
 @st.cache_data(ttl=300)
 def cargar_catalogo():
     df = run_select("""
@@ -88,7 +83,7 @@ def cargar_catalogo():
 @st.cache_data(ttl=300)
 def ultimo_km():
     df = run_select("""
-        SELECT unidad, MAX(km_final) km
+        SELECT unidad, MAX(km_final) AS km
         FROM registro_diario
         GROUP BY unidad
     """)
@@ -106,9 +101,7 @@ def limites():
         for _, r in df.iterrows()
     }
 
-# =========================================================
-# INSERT
-# =========================================================
+# ================== INSERT ==================
 def insertar_registros(filas):
     run_execute("""
         INSERT INTO registro_diario (
@@ -119,15 +112,25 @@ def insertar_registros(filas):
             gas_l, gas_p,
             diesel_l, diesel_p,
             total_litros, total_importe,
-            rendimiento_real, limite_superior, limite_inferior,
+            rendimiento_real,
+            limite_superior, limite_inferior,
             hora_registro
         )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-    """, filas)
+        VALUES (
+            %s,%s,%s,%s,%s,%s,
+            %s,%s,%s,
+            %s,%s,
+            %s,%s,
+            %s,%s,
+            %s,%s,
+            %s,%s,
+            %s,
+            %s,%s,
+            %s
+        )
+    """, filas, many=True)
 
-# =========================================================
-# GOOGLE SHEETS
-# =========================================================
+# ================== GOOGLE SHEETS ==================
 @st.cache_resource
 def sheets_client():
     creds = Credentials.from_service_account_info(
@@ -142,12 +145,10 @@ def enviar_sheets(filas):
     ws = sheets_client().open_by_url(SHEETS_URL).worksheet(SHEETS_TAB)
     ws.append_rows(filas, value_input_option="USER_ENTERED")
 
-# =========================================================
-# ADMIN
-# =========================================================
+# ================== ADMIN ==================
 with st.sidebar:
     st.header("🔐 Admin")
-    if st.text_input("Contraseña", type="password") == ADMIN_PASSWORD:
+    if st.text_input("Contraseña", type="password") == PASSWORD_ADMIN:
         st.markdown(
             f'<a href="{SHEETS_URL}" target="_blank">'
             f'<button class="admin-button">📄 Abrir Google Sheets</button></a>',
@@ -155,9 +156,7 @@ with st.sidebar:
         )
         st.stop()
 
-# =========================================================
-# UI
-# =========================================================
+# ================== UI ==================
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
 df = cargar_catalogo()
@@ -165,10 +164,10 @@ if df.empty:
     st.error("Catálogo vacío")
     st.stop()
 
-# Región por URL
+# -------- Región por link --------
 region_param = st.query_params.get("region")
 if not region_param:
-    st.error("Falta ?region=REGION")
+    st.error("Link inválido: falta ?region=REGION_SUR")
     st.stop()
 
 region_param = region_param.replace("_", " ").upper()
@@ -180,8 +179,9 @@ if region_param not in df["REGION_NORM"].unique():
 
 region = df[df["REGION_NORM"] == region_param]["Region"].iloc[0]
 
-# Región / Plaza / Fecha
+# -------- Región / Plaza / Fecha --------
 c1, c2, c3 = st.columns(3)
+
 with c1:
     st.info(f"REGIÓN\n\n**{region}**")
 
@@ -194,19 +194,17 @@ with c2:
 with c3:
     fecha = st.date_input("FECHA", date.today())
     if fecha > date.today():
-        st.error("Fecha futura no permitida")
+        st.error("No se permite fecha futura")
         st.stop()
 
-# Precios
+# -------- Precios --------
 p1, p2, p3, p4 = st.columns(4)
 precio_gas = p1.number_input("Precio Gas $", 0.0)
 precio_magna = p2.number_input("Precio Magna $", 0.0)
 precio_premium = p3.number_input("Precio Premium $", 0.0)
 precio_diesel = p4.number_input("Precio Diesel $", 0.0)
 
-# =========================================================
-# CAPTURA
-# =========================================================
+# ================== CAPTURA ==================
 kms = ultimo_km()
 lims = limites()
 
@@ -215,7 +213,7 @@ for _, r in df[(df.Region == region) & (df.Plaza == plaza)].iterrows():
     km_ini = kms.get(r.Unidad, r["Km inicial"] or 0)
     rows.append({
         "Unidad": r.Unidad,
-        "Km Final": None,
+        "Km Final": "",
         "Gas (L)": 0.0,
         "Magna (L)": 0.0,
         "Premium (L)": 0.0,
@@ -231,6 +229,7 @@ ed = st.data_editor(
     column_config={"_km": None, "_tipo": None, "_modelo": None}
 )
 
+# ================== GUARDAR ==================
 if st.button("GUARDAR"):
     filas_db = []
     filas_sh = []
@@ -238,20 +237,19 @@ if st.button("GUARDAR"):
 
     for _, x in ed.iterrows():
 
-        km_final = pd.to_numeric(x["Km Final"], errors="coerce")
-        km_ini = pd.to_numeric(x["_km"], errors="coerce")
-
-        if pd.isna(km_final) or pd.isna(km_ini):
+        if pd.isna(x["Km Final"]) or x["Km Final"] == "":
             continue
+
+        km_final = float(x["Km Final"])
+        km_ini = float(x["_km"])
 
         if km_final <= km_ini:
-            st.error(f"{x['Unidad']}: Km final <= Km inicial")
             continue
 
-        gas = pd.to_numeric(x["Gas (L)"], errors="coerce") or 0
-        magna = pd.to_numeric(x["Magna (L)"], errors="coerce") or 0
-        premium = pd.to_numeric(x["Premium (L)"], errors="coerce") or 0
-        diesel = pd.to_numeric(x["Diesel (L)"], errors="coerce") or 0
+        gas = float(x["Gas (L)"] or 0)
+        magna = float(x["Magna (L)"] or 0)
+        premium = float(x["Premium (L)"] or 0)
+        diesel = float(x["Diesel (L)"] or 0)
 
         litros = gas + magna + premium + diesel
         if litros <= 0:
@@ -261,27 +259,35 @@ if st.button("GUARDAR"):
         rend = kmr / litros
         li, ls = lims.get((region, x["_tipo"], x["_modelo"]), (None, None))
 
-        filas_db.append((
+        total_importe = (
+            gas * precio_gas +
+            magna * precio_magna +
+            premium * precio_premium +
+            diesel * precio_diesel
+        )
+
+        fila = (
             fecha, region, plaza, x.Unidad, x["_tipo"], x["_modelo"],
             km_ini, km_final, kmr,
             magna, magna * precio_magna,
             premium, premium * precio_premium,
             gas, gas * precio_gas,
             diesel, diesel * precio_diesel,
-            litros,
-            gas * precio_gas + magna * precio_magna + premium * precio_premium + diesel * precio_diesel,
+            litros, total_importe,
             rend, ls, li, hora
-        ))
+        )
 
-        filas_sh.append(list(filas_db[-1]))
+        filas_db.append(fila)
+        filas_sh.append(list(fila))
 
-    if not filas_db:
-        st.warning("No hubo registros válidos para guardar")
-    else:
+    if filas_db:
         insertar_registros(filas_db)
         enviar_sheets(filas_sh)
         st.success("✅ Guardado correctamente")
         st.rerun()
+    else:
+        st.warning("No hubo registros válidos para guardar")
+
 
 
 
