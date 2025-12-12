@@ -209,32 +209,31 @@ ed = st.data_editor(
     }
 )
 
-if st.button("GUARDAR✅"):
-    filas_db=[]; filas_sh=[]
-    for _,x in ed.iterrows():
-        if not x["Km Final"]: 
+if st.button("GUARDAR"):
+    filas_db = []
+    filas_sh = []
+
+    for _, x in ed.iterrows():
+
+        if x["Km Final"] is None or str(x["Km Final"]).strip() == "":
             continue
 
-        # Validar Km Final
-if x["Km Final"] is None or str(x["Km Final"]).strip() == "":
-    continue
+        try:
+            km_final = float(x["Km Final"])
+            km_ini = float(x["_km"])
+        except:
+            continue
 
-try:
-    km_final = float(x["Km Final"])
-    km_ini = float(x["_km"])
-except:
-    continue
-
-kmr = km_final - km_ini
-
-if kmr <= 0:
-    continue
+        kmr = km_final - km_ini
+        if kmr <= 0:
+            continue
 
         litros = x.Gas + x.Magna + x.Premium + x.Diesel
         if litros <= 0:
             continue
 
         rend = kmr / litros
+
         li,ls = lims.get((region,x["_tipo"],x["_modelo"]),(None,None))
 
         fila = (
@@ -256,6 +255,7 @@ if kmr <= 0:
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
