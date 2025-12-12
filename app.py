@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import mysql.connector
 from datetime import date, datetime
-import gspread
-from google.oauth2.service_account import Credentials
-import json
 
-st.set_page_config(page_title="Consumos y rendimientos", page_icon="🚛", layout="wide")
+st.set_page_config(
+    page_title="Consumos y rendimientos",
+    page_icon="🚛",
+    layout="wide"
+)
 
 # ================== ESTILOS ==================
 st.markdown("""
@@ -31,9 +32,6 @@ DB_PORT = int(st.secrets["DB_PORT"])
 DB_USER = st.secrets["DB_USER"]
 DB_PASSWORD = st.secrets["DB_PASSWORD"]
 DB_NAME = st.secrets["DB_NAME"]
-
-SHEETS_URL = st.secrets["SHEETS_URL"]
-SHEETS_TAB = st.secrets.get("SHEETS_TAB", "REGISTROS")
 
 PASSWORD_ADMIN = "tec123"
 
@@ -130,30 +128,11 @@ def insertar_registros(filas):
         )
     """, filas, many=True)
 
-# ================== GOOGLE SHEETS ==================
-@st.cache_resource
-def sheets_client():
-    creds = Credentials.from_service_account_info(
-        json.loads(st.secrets["GOOGLE_CREDENTIALS"]),
-        scopes=["https://www.googleapis.com/auth/spreadsheets"]
-    )
-    return gspread.authorize(creds)
-
-def enviar_sheets(filas):
-    if not filas:
-        return
-    ws = sheets_client().open_by_url(SHEETS_URL).worksheet(SHEETS_TAB)
-    ws.append_rows(filas, value_input_option="USER_ENTERED")
-
 # ================== ADMIN ==================
 with st.sidebar:
     st.header("🔐 Admin")
     if st.text_input("Contraseña", type="password") == PASSWORD_ADMIN:
-        st.markdown(
-            f'<a href="{SHEETS_URL}" target="_blank">'
-            f'<button class="admin-button">📄 Abrir Google Sheets</button></a>',
-            unsafe_allow_html=True
-        )
+        st.success("Modo administrador")
         st.stop()
 
 # ================== UI ==================
@@ -181,6 +160,7 @@ region = df[df["REGION_NORM"] == region_param]["Region"].iloc[0]
 
 # -------- Región / Plaza / Fecha --------
 c1, c2, c3 = st.columns(3)
+
 with c1:
     st.info(f"REGIÓN\n\n**{region}**")
 
@@ -226,13 +206,16 @@ for _, r in df[(df.Region == region) & (df.Plaza == plaza)].iterrows():
 ed = st.data_editor(
     pd.DataFrame(rows),
     hide_index=True,
-    column_config={"_km": None, "_tipo": None, "_modelo": None}
+    column_config={
+        "_km": None,
+        "_tipo": None,
+        "_modelo": None
+    }
 )
 
 # ================== GUARDAR ==================
 if st.button("GUARDAR"):
     filas_db = []
-    filas_sh = []
     hora = datetime.now().strftime("%H:%M:%S")
 
     for _, x in ed.iterrows():
@@ -277,15 +260,15 @@ if st.button("GUARDAR"):
         )
 
         filas_db.append(fila)
-        filas_sh.append(list(fila))
 
     if filas_db:
         insertar_registros(filas_db)
-        enviar_sheets(filas_sh)
         st.success("✅ Guardado correctamente")
         st.rerun()
     else:
         st.warning("No hubo registros válidos para guardar")
+
+
 
 
 
