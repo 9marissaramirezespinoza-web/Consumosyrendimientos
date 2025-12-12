@@ -31,7 +31,7 @@ DB_HOST = st.secrets["DB_HOST"]
 DB_PORT = int(st.secrets.get("TIDB_PORT", 4000))
 DB_USER = st.secrets["DB_USER"]
 DB_PASSWORD = st.secrets["DB_PASSWORD"]
-DB_NAME = st.secrets["DB_DATABASE"]
+DB_NAME = st.secrets["TIDB_DATABASE"]
 
 LINK_EXCEL_NUBE = st.secrets["GOOGLE_SHEETS_URL"]
 HOJA_REGISTROS = st.secrets.get("SHEETS_TAB", "REGISTROS")
@@ -203,6 +203,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
