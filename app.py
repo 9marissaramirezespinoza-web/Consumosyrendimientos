@@ -6,11 +6,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import json
 
-st.set_page_config(
-    page_title="Consumos y rendimientos",
-    page_icon="🚛",
-    layout="wide"
-)
+st.set_page_config(page_title="Consumos y rendimientos", page_icon="🚛", layout="wide")
 
 # ================== ESTILOS ==================
 st.markdown("""
@@ -36,10 +32,31 @@ DB_USER = st.secrets["DB_USER"]
 DB_PASSWORD = st.secrets["DB_PASSWORD"]
 DB_NAME = st.secrets["DB_NAME"]
 
-PASSWORD_ADMIN = "tec123"
-
 SHEETS_URL = "https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit"
 SHEETS_TAB = "REGISTROS"
+PASSWORD_ADMIN = "tec123"
+
+# ================== HELPERS ==================
+def to_float(v):
+    if v is None:
+        return None
+    if isinstance(v, str):
+        s = v.strip().replace(",", "")
+        if s == "":
+            return None
+        try:
+            return float(s)
+        except:
+            return None
+    try:
+        if pd.isna(v):
+            return None
+    except:
+        pass
+    try:
+        return float(v)
+    except:
+        return None
 
 # ================== DB ==================
 def get_connection():
@@ -51,22 +68,22 @@ def get_connection():
         database=DB_NAME
     )
 
-def run_select(query, params=None):
-    conn = get_connection()
-    df = pd.read_sql(query, conn, params=params)
-    conn.close()
+def run_select(q, p=None):
+    c = get_connection()
+    df = pd.read_sql(q, c, params=p)
+    c.close()
     return df
 
-def run_execute(query, params=None, many=False):
-    conn = get_connection()
-    cur = conn.cursor()
+def run_execute(q, p=None, many=False):
+    c = get_connection()
+    cur = c.cursor()
     if many:
-        cur.executemany(query, params)
+        cur.executemany(q, p)
     else:
-        cur.execute(query, params)
-    conn.commit()
+        cur.execute(q, p)
+    c.commit()
     cur.close()
-    conn.close()
+    c.close()
 
 # ================== DATA ==================
 @st.cache_data(ttl=300)
@@ -173,16 +190,13 @@ region = df[df["REGION_NORM"] == region_param]["Region"].iloc[0]
 
 # -------- Región / Plaza / Fecha --------
 c1, c2, c3 = st.columns(3)
-
 with c1:
     st.info(f"REGIÓN\n\n**{region}**")
-
 with c2:
     plaza = st.selectbox(
         "PLAZA",
         sorted(df[df["Region"] == region]["Plaza"].unique())
     )
-
 with c3:
     fecha = st.date_input("FECHA", date.today())
     if fecha > date.today():
@@ -218,14 +232,17 @@ for _, r in df[(df.Region == region) & (df.Plaza == plaza)].iterrows():
 ed = st.data_editor(
     pd.DataFrame(rows),
     hide_index=True,
+    use_container_width=True,
     column_config={
-        "_km": None,
-        "_tipo": None,
-        "_modelo": None
+        "Km Final": st.column_config.NumberColumn("Km Final", min_value=0, step=1),
+        "Gas (L)": st.column_config.NumberColumn("Gas (L)", min_value=0.0),
+        "Magna (L)": st.column_config.NumberColumn("Magna (L)", min_value=0.0),
+        "Premium (L)": st.column_config.NumberColumn("Premium (L)", min_value=0.0),
+        "Diesel (L)": st.column_config.NumberColumn("Diesel (L)", min_value=0.0),
+        "_km": None, "_tipo": None, "_modelo": None
     }
 )
 
-# ================== GUARDAR ==================
 if st.button("GUARDAR"):
     filas_db = []
     filas_sh = []
@@ -233,33 +250,26 @@ if st.button("GUARDAR"):
 
     for _, x in ed.iterrows():
 
-        # --- VALIDACIÓN CORRECTA ---
-        if pd.isna(x["Km Final"]):
-            continue
+        km_final = to_float(x["Km Final"])
+        km_ini = to_float(x["_km"])
 
-        try:
-            km_final = float(str(x["Km Final"]).strip())
-            km_ini = float(x["_km"])
-        except:
-            st.error(f"{x['Unidad']}: km inválido")
+        if km_final is None:
             continue
-
         if km_final <= km_ini:
             st.error(f"{x['Unidad']}: Km final menor o igual al inicial")
             continue
 
-        kmr = km_final - km_ini
-
-        gas = float(x["Gas (L)"] or 0)
-        magna = float(x["Magna (L)"] or 0)
-        premium = float(x["Premium (L)"] or 0)
-        diesel = float(x["Diesel (L)"] or 0)
+        gas = to_float(x["Gas (L)"]) or 0
+        magna = to_float(x["Magna (L)"]) or 0
+        premium = to_float(x["Premium (L)"]) or 0
+        diesel = to_float(x["Diesel (L)"]) or 0
 
         litros = gas + magna + premium + diesel
         if litros <= 0:
             st.error(f"{x['Unidad']}: sin litros capturados")
             continue
 
+        kmr = km_final - km_ini
         rend = kmr / litros
         li, ls = lims.get((region, x["_tipo"], x["_modelo"]), (None, None))
 
@@ -284,6 +294,8 @@ if st.button("GUARDAR"):
         st.rerun()
     else:
         st.warning("No hubo registros válidos para guardar")
+
+
 
 
 
