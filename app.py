@@ -32,7 +32,7 @@ DB_USER = st.secrets["DB_USER"]
 DB_PASSWORD = st.secrets["DB_PASSWORD"]
 DB_NAME = st.secrets["DB_NAME"]
 
-LINK_EXCEL_NUBE = st.secrets["GOOGLE_SHEETS_URL"]
+LINK_EXCEL_NUBE = "https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit?hl=es&gid=0#gid=0"
 HOJA_REGISTROS = "REGISTROS"
 PASSWORD_ADMIN =  ""
 
@@ -215,5 +215,6 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
