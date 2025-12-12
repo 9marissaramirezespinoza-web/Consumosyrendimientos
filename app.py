@@ -226,7 +226,17 @@ for _, r in df[(df.Region == region) & (df.Plaza == plaza)].iterrows():
 ed = st.data_editor(
     pd.DataFrame(rows),
     hide_index=True,
-    column_config={"_km": None, "_tipo": None, "_modelo": None}
+    column_config={
+        "Km Final": st.column_config.NumberColumn(
+            "Km Final",
+            min_value=0,
+            step=1,
+            format="%d"
+        ),
+        "_km": None,
+        "_tipo": None,
+        "_modelo": None
+    }
 )
 
 # ================== GUARDAR ==================
@@ -287,6 +297,7 @@ if st.button("GUARDAR"):
         st.rerun()
     else:
         st.warning("No hubo registros válidos para guardar")
+
 
 
 
