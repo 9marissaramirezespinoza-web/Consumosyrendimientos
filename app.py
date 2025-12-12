@@ -181,10 +181,10 @@ with c3:
 
 # Precios
 c1,c2,c3,c4 = st.columns(4)
-precio_gas = c1.number_input("Gas $",0.0)
-precio_magna = c2.number_input("Magna $",0.0)
-precio_premium = c3.number_input("Premium $",0.0)
-precio_diesel = c4.number_input("Diesel $",0.0)
+precio_gas = c1.number_input("Precio Gas $",0.0)
+precio_magna = c2.number_input("Precio Gasolina Magna $",0.0)
+precio_premium = c3.number_input("Precio Gasolina Premium $",0.0)
+precio_diesel = c4.number_input("Precio Diesel $",0.0)
 
 # Tabla
 kms = ultimo_km()
@@ -242,6 +242,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
