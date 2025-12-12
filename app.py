@@ -29,7 +29,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------ CONFIG DESDE SECRETS ------------------
-DB_HOST = st.secrets["TIDB_HOST"]
+DB_HOST = st.secrets["DB_HOST"]
 DB_PORT = int(st.secrets.get("TIDB_PORT", 4000))
 DB_USER = st.secrets["TIDB_USER"]
 DB_PASSWORD = st.secrets["TIDB_PASSWORD"]
@@ -205,6 +205,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
