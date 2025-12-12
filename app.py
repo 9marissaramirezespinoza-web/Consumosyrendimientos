@@ -229,10 +229,12 @@ if st.button("GUARDAR"):
             continue
 
         litros = x.Gas + x.Magna + x.Premium + x.Diesel
-        if litros <= 0:
-            continue
+       if litros <= 0:
+    st.error(f"❌ {x.Unidad}: no capturó litros (Gas, Magna, Premium o Diesel)")
+    continue
 
-        rend = kmr / litros
+
+      rend = kmr / litros
 
         li,ls = lims.get((region,x["_tipo"],x["_modelo"]),(None,None))
 
@@ -255,6 +257,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
