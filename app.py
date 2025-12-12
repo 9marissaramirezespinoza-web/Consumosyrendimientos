@@ -181,7 +181,6 @@ region = df[df["REGION_NORM"] == region_param]["Region"].iloc[0]
 
 # -------- Región / Plaza / Fecha --------
 c1, c2, c3 = st.columns(3)
-
 with c1:
     st.info(f"REGIÓN\n\n**{region}**")
 
@@ -194,7 +193,6 @@ with c2:
 with c3:
     fecha = st.date_input("FECHA", date.today())
     if fecha > date.today():
-        st.error("No se permite fecha futura")
         st.stop()
 
 # -------- Precios --------
@@ -235,28 +233,18 @@ ed = st.data_editor(
 if st.button("GUARDAR"):
     filas_db = []
     filas_sh = []
-    mensajes = []
     hora = datetime.now().strftime("%H:%M:%S")
 
     for _, x in ed.iterrows():
-        unidad = x["Unidad"]
-
-        # ---- KM FINAL ----
         try:
             km_final = float(x["Km Final"])
-        except (TypeError, ValueError):
-            mensajes.append(f"❌ {unidad}: Km Final vacío o no numérico")
+            km_ini = float(x["_km"])
+        except:
             continue
-
-        km_ini = float(x["_km"])
 
         if km_final <= km_ini:
-            mensajes.append(
-                f"❌ {unidad}: Km Final ({km_final}) ≤ Km Inicial ({km_ini})"
-            )
             continue
 
-        # ---- LITROS ----
         gas = float(x["Gas (L)"] or 0)
         magna = float(x["Magna (L)"] or 0)
         premium = float(x["Premium (L)"] or 0)
@@ -264,10 +252,8 @@ if st.button("GUARDAR"):
 
         litros = gas + magna + premium + diesel
         if litros <= 0:
-            mensajes.append(f"❌ {unidad}: No capturaste litros")
             continue
 
-        # ---- OK ----
         kmr = km_final - km_ini
         rend = kmr / litros
         li, ls = lims.get((region, x["_tipo"], x["_modelo"]), (None, None))
@@ -280,7 +266,7 @@ if st.button("GUARDAR"):
         )
 
         fila = (
-            fecha, region, plaza, unidad, x["_tipo"], x["_modelo"],
+            fecha, region, plaza, x["Unidad"], x["_tipo"], x["_modelo"],
             km_ini, km_final, kmr,
             magna, magna * precio_magna,
             premium, premium * precio_premium,
@@ -292,15 +278,6 @@ if st.button("GUARDAR"):
 
         filas_db.append(fila)
         filas_sh.append(list(fila))
-        mensajes.append(f"✅ {unidad}: registro listo")
-
-    st.divider()
-    st.subheader("Resultado de validación")
-    for m in mensajes:
-        if m.startswith("❌"):
-            st.error(m)
-        else:
-            st.success(m)
 
     if filas_db:
         insertar_registros(filas_db)
@@ -309,6 +286,7 @@ if st.button("GUARDAR"):
         st.rerun()
     else:
         st.warning("No hubo registros válidos para guardar")
+
 
 
 
