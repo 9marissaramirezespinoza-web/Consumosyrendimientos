@@ -5,11 +5,10 @@ from datetime import date, datetime
 import gspread
 from google.oauth2.service_account import Credentials
 import json
-import math
 
 st.set_page_config(page_title="Consumos y rendimientos", page_icon="🚛", layout="wide")
 
-# ------------------ ESTILOS ------------------
+# ================== ESTILOS ==================
 st.markdown("""
 <style>
 .block-container { padding-top: 1rem; }
@@ -26,7 +25,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------ SECRETS ------------------
+# ================== SECRETS ==================
 DB_HOST = st.secrets["DB_HOST"]
 DB_PORT = int(st.secrets["DB_PORT"])
 DB_USER = st.secrets["DB_USER"]
@@ -38,15 +37,7 @@ PASSWORD_ADMIN = "tec123"
 SHEETS_URL = "https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit"
 SHEETS_TAB = "REGISTROS"
 
-# ------------------ HELPERS ------------------
-def es_vacio(v):
-    return (
-        v is None or
-        (isinstance(v, float) and math.isnan(v)) or
-        str(v).strip() == ""
-    )
-
-# ------------------ DB ------------------
+# ================== DB ==================
 def get_connection():
     return mysql.connector.connect(
         host=DB_HOST,
@@ -73,7 +64,7 @@ def run_execute(q, p=None, many=False):
     cur.close()
     c.close()
 
-# ------------------ DATA ------------------
+# ================== DATA ==================
 @st.cache_data(ttl=300)
 def cargar_catalogo():
     df = run_select("""
@@ -110,7 +101,7 @@ def limites():
         for _, r in df.iterrows()
     }
 
-# ------------------ INSERT ------------------
+# ================== INSERT ==================
 def insertar_registros(filas):
     run_execute("""
         INSERT INTO registro_diario (
@@ -127,7 +118,7 @@ def insertar_registros(filas):
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, filas, many=True)
 
-# ------------------ GOOGLE SHEETS ------------------
+# ================== GOOGLE SHEETS ==================
 @st.cache_resource
 def sheets_client():
     creds = Credentials.from_service_account_info(
@@ -142,7 +133,7 @@ def enviar_sheets(filas):
     ws = sheets_client().open_by_url(SHEETS_URL).worksheet(SHEETS_TAB)
     ws.append_rows(filas, value_input_option="USER_ENTERED")
 
-# ------------------ ADMIN ------------------
+# ================== ADMIN ==================
 with st.sidebar:
     st.header("🔐 Admin")
     if st.text_input("Contraseña", type="password") == PASSWORD_ADMIN:
@@ -153,7 +144,7 @@ with st.sidebar:
         )
         st.stop()
 
-# ------------------ UI ------------------
+# ================== UI ==================
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
 df = cargar_catalogo()
@@ -161,7 +152,7 @@ if df.empty:
     st.error("Catálogo vacío")
     st.stop()
 
-# Región desde link
+# -------- REGIÓN DESDE LINK --------
 region_param = st.query_params.get("region")
 if not region_param:
     st.error("Link inválido: falta ?region=REGION_SUR")
@@ -176,8 +167,9 @@ if region_param not in df["REGION_NORM"].unique():
 
 region = df[df["REGION_NORM"] == region_param]["Region"].iloc[0]
 
-# Región / Plaza / Fecha
+# -------- REGIÓN / PLAZA / FECHA --------
 c1, c2, c3 = st.columns(3)
+
 with c1:
     st.info(f"REGIÓN\n\n**{region}**")
 
@@ -193,14 +185,14 @@ with c3:
         st.error("No se permite fecha futura")
         st.stop()
 
-# Precios
+# -------- PRECIOS --------
 p1, p2, p3, p4 = st.columns(4)
 precio_gas = p1.number_input("Precio Gas $", 0.0)
 precio_magna = p2.number_input("Precio Magna $", 0.0)
 precio_premium = p3.number_input("Precio Premium $", 0.0)
 precio_diesel = p4.number_input("Precio Diesel $", 0.0)
 
-# ------------------ CAPTURA ------------------
+# ================== CAPTURA ==================
 kms = ultimo_km()
 lims = limites()
 
@@ -225,7 +217,7 @@ ed = st.data_editor(
     column_config={"_km": None, "_tipo": None, "_modelo": None}
 )
 
-# ------------------ GUARDAR ------------------
+# ================== GUARDAR ==================
 if st.button("GUARDAR"):
     filas_db = []
     filas_sh = []
@@ -233,17 +225,19 @@ if st.button("GUARDAR"):
 
     for _, x in ed.iterrows():
 
-        if es_vacio(x["Km Final"]):
-            continue
+        try:
+            if x["Km Final"] is None or pd.isna(x["Km Final"]):
+                continue
 
-        km_final = float(x["Km Final"])
-        km_ini = float(x["_km"])
+            km_final = float(str(x["Km Final"]).strip())
+            km_ini = float(x["_km"])
+        except:
+            st.error(f"{x['Unidad']}: km inválido")
+            continue
 
         if km_final <= km_ini:
             st.error(f"{x['Unidad']}: Km final menor o igual al inicial")
             continue
-
-        kmr = km_final - km_ini
 
         gas = float(x["Gas (L)"] or 0)
         magna = float(x["Magna (L)"] or 0)
@@ -255,29 +249,24 @@ if st.button("GUARDAR"):
             st.error(f"{x['Unidad']}: sin litros capturados")
             continue
 
+        kmr = km_final - km_ini
         rend = kmr / litros
+
         li, ls = lims.get((region, x["_tipo"], x["_modelo"]), (None, None))
 
-        total_importe = (
-            gas * precio_gas +
-            magna * precio_magna +
-            premium * precio_premium +
-            diesel * precio_diesel
-        )
-
-        fila = (
+        filas_db.append((
             fecha, region, plaza, x.Unidad, x["_tipo"], x["_modelo"],
             km_ini, km_final, kmr,
             magna, magna * precio_magna,
             premium, premium * precio_premium,
             gas, gas * precio_gas,
             diesel, diesel * precio_diesel,
-            litros, total_importe,
+            litros,
+            gas * precio_gas + magna * precio_magna + premium * precio_premium + diesel * precio_diesel,
             rend, ls, li, hora
-        )
+        ))
 
-        filas_db.append(fila)
-        filas_sh.append(list(fila))
+        filas_sh.append(list(filas_db[-1]))
 
     if filas_db:
         insertar_registros(filas_db)
@@ -286,23 +275,6 @@ if st.button("GUARDAR"):
         st.rerun()
     else:
         st.warning("No hubo registros válidos para guardar")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
