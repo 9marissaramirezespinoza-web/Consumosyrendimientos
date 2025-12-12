@@ -143,11 +143,25 @@ if df.empty:
     st.error("Catálogo vacío")
     st.stop()
 
-# Región fija por link
-region = st.query_params.get("region")
-if not region or region not in df["Region"].unique():
-    st.error("Link inválido: falta ?region=REGION")
+region_param = st.query_params.get("region")
+
+if not region_param:
+    st.error("Link inválido: falta ?region=...")
     st.stop()
+
+# normalizamos
+region_param = region_param.replace("_", " ").upper()
+
+# normalizamos catálogo
+df["Region_norm"] = df["Region"].str.upper()
+
+if region_param not in df["Region_norm"].unique():
+    st.error(f"Región no válida: {region_param}")
+    st.stop()
+
+# obtener región real
+region = df[df["Region_norm"] == region_param]["Region"].iloc[0]
+
 
 st.info(f"Región: **{region}**")
 
@@ -215,6 +229,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
