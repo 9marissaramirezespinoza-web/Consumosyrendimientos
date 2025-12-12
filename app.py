@@ -44,8 +44,7 @@ def get_connection():
         user=DB_USER,
         password=DB_PASSWORD,
         database=DB_NAME,
-        ssl_ca="/tmp/isrgrootx1.pem"
-    )
+)
 
 def run_select(q, p=None):
     c = get_connection()
@@ -215,6 +214,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
