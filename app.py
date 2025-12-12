@@ -1,4 +1,7 @@
 import streamlit as st
+st.write(st.secrets)
+st.stop()
+import streamlit as st
 import pandas as pd
 import mysql.connector
 from datetime import date, datetime
@@ -203,4 +206,5 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
