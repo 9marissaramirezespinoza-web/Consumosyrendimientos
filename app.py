@@ -47,19 +47,19 @@ def get_connection():
         database=DB_NAME
     )
 
-def run_select(q, p=None):
+def run_select(query, params=None):
     conn = get_connection()
-    df = pd.read_sql(q, conn, params=p)
+    df = pd.read_sql(query, conn, params=params)
     conn.close()
     return df
 
-def run_execute(q, params, many=False):
+def run_execute(query, params, many=False):
     conn = get_connection()
     cur = conn.cursor()
     if many:
-        cur.executemany(q, params)
+        cur.executemany(query, params)
     else:
-        cur.execute(q, params)
+        cur.execute(query, params)
     conn.commit()
     cur.close()
     conn.close()
@@ -87,7 +87,7 @@ def ultimo_km():
         FROM registro_diario
         GROUP BY unidad
     """)
-    return {r["unidad"]: float(r["km"] or 0) for _, r in df.iterrows()}
+    return {str(r["unidad"]): float(r["km"] or 0) for _, r in df.iterrows()}
 
 @st.cache_data(ttl=300)
 def limites():
@@ -96,7 +96,7 @@ def limites():
         FROM limites_rendimiento
     """)
     return {
-        (r["region"], r["tipo"], r["modelo"]):
+        (str(r["region"]), str(r["tipo"]), str(r["modelo"])):
         (float(r["limite_inferior"]), float(r["limite_superior"]))
         for _, r in df.iterrows()
     }
@@ -210,9 +210,11 @@ lims = limites()
 
 rows = []
 for _, r in df[(df.Region == region) & (df.Plaza == plaza)].iterrows():
-    km_ini = kms.get(r.Unidad, r["Km inicial"] or 0)
+    unidad = str(r.Unidad)
+    km_ini = kms.get(unidad, r["Km inicial"] or 0)
+
     rows.append({
-        "Unidad": r.Unidad,
+        "Unidad": unidad,
         "Km Final": "",
         "Gas (L)": 0.0,
         "Magna (L)": 0.0,
@@ -226,36 +228,35 @@ for _, r in df[(df.Region == region) & (df.Plaza == plaza)].iterrows():
 ed = st.data_editor(
     pd.DataFrame(rows),
     hide_index=True,
-    column_config={
-        "Km Final": st.column_config.NumberColumn(
-            "Km Final",
-            min_value=0,
-            step=1,
-            format="%d"
-        ),
-        "_km": None,
-        "_tipo": None,
-        "_modelo": None
-    }
+    column_config={"_km": None, "_tipo": None, "_modelo": None}
 )
 
 # ================== GUARDAR ==================
 if st.button("GUARDAR"):
     filas_db = []
     filas_sh = []
+    mensajes = []
     hora = datetime.now().strftime("%H:%M:%S")
 
     for _, x in ed.iterrows():
+        unidad = x["Unidad"]
 
-        if pd.isna(x["Km Final"]) or x["Km Final"] == "":
+        # ---- KM FINAL ----
+        try:
+            km_final = float(x["Km Final"])
+        except (TypeError, ValueError):
+            mensajes.append(f"❌ {unidad}: Km Final vacío o no numérico")
             continue
 
-        km_final = float(x["Km Final"])
         km_ini = float(x["_km"])
 
         if km_final <= km_ini:
+            mensajes.append(
+                f"❌ {unidad}: Km Final ({km_final}) ≤ Km Inicial ({km_ini})"
+            )
             continue
 
+        # ---- LITROS ----
         gas = float(x["Gas (L)"] or 0)
         magna = float(x["Magna (L)"] or 0)
         premium = float(x["Premium (L)"] or 0)
@@ -263,8 +264,10 @@ if st.button("GUARDAR"):
 
         litros = gas + magna + premium + diesel
         if litros <= 0:
+            mensajes.append(f"❌ {unidad}: No capturaste litros")
             continue
 
+        # ---- OK ----
         kmr = km_final - km_ini
         rend = kmr / litros
         li, ls = lims.get((region, x["_tipo"], x["_modelo"]), (None, None))
@@ -277,7 +280,7 @@ if st.button("GUARDAR"):
         )
 
         fila = (
-            fecha, region, plaza, x.Unidad, x["_tipo"], x["_modelo"],
+            fecha, region, plaza, unidad, x["_tipo"], x["_modelo"],
             km_ini, km_final, kmr,
             magna, magna * precio_magna,
             premium, premium * precio_premium,
@@ -289,6 +292,15 @@ if st.button("GUARDAR"):
 
         filas_db.append(fila)
         filas_sh.append(list(fila))
+        mensajes.append(f"✅ {unidad}: registro listo")
+
+    st.divider()
+    st.subheader("Resultado de validación")
+    for m in mensajes:
+        if m.startswith("❌"):
+            st.error(m)
+        else:
+            st.success(m)
 
     if filas_db:
         insertar_registros(filas_db)
