@@ -1,4 +1,3 @@
-# redeploy
 import streamlit as st
 import pandas as pd
 import mysql.connector
@@ -194,7 +193,15 @@ for _,r in df[(df.Region==region)&(df.Plaza==plaza)].iterrows():
         "_km":km_ini,"_tipo":r.Tipo,"_modelo":r.Modelo
     })
 
-ed = st.data_editor(pd.DataFrame(rows), hide_index=True)
+ed = st.data_editor(
+    pd.DataFrame(rows),
+    hide_index=True,
+    column_config={
+        "_tipo": None,
+        "_modelo": None,
+        "_km": None
+    }
+)
 
 if st.button("GUARDAR"):
     filas_db=[]; filas_sh=[]
@@ -229,6 +236,7 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
