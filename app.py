@@ -213,50 +213,53 @@ if st.button("GUARDAR"):
     filas_db = []
     filas_sh = []
 
-    for _, x in ed.iterrows():
+  for _, x in ed.iterrows():
+    if not x["Km Final"]:
+        continue
 
-        if x["Km Final"] is None or str(x["Km Final"]).strip() == "":
-            continue
+    kmr = x["Km Final"] - x["_km"]
 
-        try:
-            km_final = float(x["Km Final"])
-            km_ini = float(x["_km"])
-        except:
-            continue
+    litros = x.Gas + x.Magna + x.Premium + x.Diesel
+    if litros <= 0:
+        st.error(f"❌ {x.Unidad}: no capturó litros (Gas, Magna, Premium o Diesel)")
+        continue
 
-        kmr = km_final - km_ini
-        if kmr <= 0:
-            continue
+    rend = kmr / litros
+    li, ls = lims.get((region, x["_tipo"], x["_modelo"]), (None, None))
 
-        litros = x.Gas + x.Magna + x.Premium + x.Diesel
-       if litros <= 0:
-    st.error(f"❌ {x.Unidad}: no capturó litros (Gas, Magna, Premium o Diesel)")
-    continue
+    filas_db.append((
+        fecha,
+        region,
+        plaza,
+        x.Unidad,
+        x["_tipo"],
+        x["_modelo"],
+        x["_km"],
+        x["Km Final"],
+        kmr,
+        x.Magna,
+        x.Magna * precio_magna,
+        x.Premium,
+        x.Premium * precio_premium,
+        x.Gas,
+        x.Gas * precio_gas,
+        x.Diesel,
+        x.Diesel * precio_diesel,
+        litros,
+        x.Gas * precio_gas + x.Magna * precio_magna + x.Premium * precio_premium + x.Diesel * precio_diesel,
+        rend,
+        ls,
+        li,
+        datetime.now().strftime("%H:%M:%S")
+    ))
 
-
-      rend = kmr / litros
-
-        li,ls = lims.get((region,x["_tipo"],x["_modelo"]),(None,None))
-
-        fila = (
-            fecha,region,plaza,x.Unidad,x["_tipo"],x["_modelo"],
-            x["_km"],x["Km Final"],kmr,
-            x.Magna,x.Magna*precio_magna,
-            x.Premium,x.Premium*precio_premium,
-            x.Gas,x.Gas*precio_gas,
-            x.Diesel,x.Diesel*precio_diesel,
-            litros,
-            x.Gas*precio_gas+x.Magna*precio_magna+x.Premium*precio_premium+x.Diesel*precio_diesel,
-            rend,ls,li,datetime.now().strftime("%H:%M:%S")
-        )
-
-        filas_db.append(fila)
-        filas_sh.append(list(fila))
+    filas_sh.append(list(filas_db[-1]))
 
     insertar(filas_db)
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
 
