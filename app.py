@@ -33,8 +33,8 @@ DB_PASSWORD = st.secrets["DB_PASSWORD"]
 DB_NAME = st.secrets["DB_NAME"]
 
 LINK_EXCEL_NUBE = st.secrets["GOOGLE_SHEETS_URL"]
-HOJA_REGISTROS = st.secrets.get("SHEETS_TAB", "REGISTROS")
-PASSWORD_ADMIN = st.secrets.get("ADMIN_PASSWORD", "")
+HOJA_REGISTROS = "REGISTROS"
+PASSWORD_ADMIN =  ""
 
 # ------------------ DB ------------------
 def get_connection():
@@ -215,4 +215,5 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
