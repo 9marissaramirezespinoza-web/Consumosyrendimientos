@@ -137,6 +137,9 @@ with st.sidebar:
 
 # ================== UI ==================
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
+if st.session_state.guardado_ok:
+    st.success("✅ Guardado correctamente")
+    st.session_state.guardado_ok = False
 
 df = cargar_catalogo()
 if df.empty:
@@ -263,10 +266,25 @@ if st.button("GUARDAR"):
 
     if filas_db:
         insertar_registros(filas_db)
-        st.success("✅ Guardado correctamente")
-        st.rerun()
-    else:
-        st.warning("No hubo registros válidos para guardar")
+      if filas_db:
+    try:
+        insertar_registros(filas_db)
+        st.session_state.guardado_ok = True
+    except Exception as e:
+        st.error("❌ Error al guardar en TiDB")
+        st.stop()
+
+    # Google Sheets NO debe romper la app
+    try:
+        enviar_sheets(filas_sh)
+    except Exception:
+        pass
+
+    st.rerun()
+else:
+    st.warning("No hubo registros válidos para guardar")
+
+
 
 
 
