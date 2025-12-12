@@ -5,7 +5,6 @@ from datetime import date, datetime
 import gspread
 from google.oauth2.service_account import Credentials
 import json
-import os
 
 st.set_page_config(page_title="Consumos y rendimientos", page_icon="🚛", layout="wide")
 
@@ -28,10 +27,10 @@ st.markdown("""
 
 # ------------------ CONFIG DESDE SECRETS ------------------
 DB_HOST = st.secrets["DB_HOST"]
-DB_PORT = int(st.secrets.get("TIDB_PORT", 4000))
+DB_PORT = int(st.secrets.get("DB_PORT", 4000))
 DB_USER = st.secrets["DB_USER"]
 DB_PASSWORD = st.secrets["DB_PASSWORD"]
-DB_NAME = st.secrets["TIDB_DATABASE"]
+DB_NAME = st.secrets["DB_NAME"]
 
 LINK_EXCEL_NUBE = st.secrets["GOOGLE_SHEETS_URL"]
 HOJA_REGISTROS = st.secrets.get("SHEETS_TAB", "REGISTROS")
@@ -44,7 +43,8 @@ def get_connection():
         port=DB_PORT,
         user=DB_USER,
         password=DB_PASSWORD,
-        database=DB_NAME
+        database=DB_NAME,
+        ssl_ca="/tmp/isrgrootx1.pem"
     )
 
 def run_select(q, p=None):
@@ -114,11 +114,14 @@ def insertar(filas):
 def sheets_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds = Credentials.from_service_account_info(
-        json.loads(st.secrets["GOOGLE_CREDENTIALS"]), scopes=scopes
+        json.loads(st.secrets["GOOGLE_CREDENTIALS"]),
+        scopes=scopes
     )
     return gspread.authorize(creds)
 
 def enviar_sheets(filas):
+    if not filas:
+        return
     ws = sheets_client().open_by_url(LINK_EXCEL_NUBE).worksheet(HOJA_REGISTROS)
     ws.append_rows(filas, value_input_option="USER_ENTERED")
 
@@ -143,12 +146,13 @@ if df.empty:
 # Región fija por link
 region = st.query_params.get("region")
 if not region or region not in df["Region"].unique():
-    st.error("Link inválido: falta ?region=...")
+    st.error("Link inválido: falta ?region=REGION")
     st.stop()
 
 st.info(f"Región: **{region}**")
 
-plaza = st.selectbox("PLAZA",
+plaza = st.selectbox(
+    "PLAZA",
     sorted(df[df["Region"]==region]["Plaza"].unique())
 )
 
@@ -181,12 +185,18 @@ ed = st.data_editor(pd.DataFrame(rows), hide_index=True)
 if st.button("GUARDAR"):
     filas_db=[]; filas_sh=[]
     for _,x in ed.iterrows():
-        if not x["Km Final"]: continue
-        kmr = x["Km Final"]-x["_km"]
-        litros = x.Gas+x.Magna+x.Premium+x.Diesel
-        rend = kmr/litros
+        if not x["Km Final"]: 
+            continue
+
+        kmr = x["Km Final"] - x["_km"]
+        litros = x.Gas + x.Magna + x.Premium + x.Diesel
+        if litros <= 0:
+            continue
+
+        rend = kmr / litros
         li,ls = lims.get((region,x["_tipo"],x["_modelo"]),(None,None))
-        filas_db.append((
+
+        fila = (
             fecha,region,plaza,x.Unidad,x["_tipo"],x["_modelo"],
             x["_km"],x["Km Final"],kmr,
             x.Magna,x.Magna*precio_magna,
@@ -196,18 +206,13 @@ if st.button("GUARDAR"):
             litros,
             x.Gas*precio_gas+x.Magna*precio_magna+x.Premium*precio_premium+x.Diesel*precio_diesel,
             rend,ls,li,datetime.now().strftime("%H:%M:%S")
-        ))
-        filas_sh.append(list(filas_db[-1]))
+        )
+
+        filas_db.append(fila)
+        filas_sh.append(list(fila))
 
     insertar(filas_db)
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
-
-
-
-
-
-
-
 
