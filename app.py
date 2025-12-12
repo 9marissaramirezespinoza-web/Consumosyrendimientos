@@ -219,11 +219,11 @@ if st.button("GUARDAR"):
     filas_db = []
     filas_sh = []
 
-    for _, x in ed.iterrows():
-        if not x["Km Final"]:
-            continue
+  for _, x in ed.iterrows():
+    if not x["Km Final"]:
+        continue
 
-        kmr = x["Km Final"] - x["_km"]
+    kmr = x["Km Final"] - x["_km"]
 
         litros = (
             x["Gas(L)"] +
@@ -264,6 +264,7 @@ if st.button("GUARDAR"):
         enviar_sheets(filas_sh)
         st.success("Guardado correctamente")
         st.rerun()
+
 
 
 
