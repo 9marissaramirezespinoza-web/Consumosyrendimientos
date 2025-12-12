@@ -1,5 +1,4 @@
-import streamlit as st
-st.write(st.secrets)
+st.write(st.secrets.keys())
 st.stop()
 import streamlit as st
 import pandas as pd
@@ -206,5 +205,6 @@ if st.button("GUARDAR"):
     enviar_sheets(filas_sh)
     st.success("Guardado")
     st.rerun()
+
 
 
