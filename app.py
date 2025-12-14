@@ -151,18 +151,34 @@ def insertar_registros(filas):
 
 # ================== GOOGLE SHEETS (BEST EFFORT) ==================
 
+# ================== GOOGLE SHEETS (BEST EFFORT) - CORRECCIÓN DE PRECISIÓN ==================
+
 def clean_for_sheets(value):
-    """Convierte tipos no serializables (date, None) a string/float para Sheets."""
+    """Convierte tipos no serializables (date, None) a string/float para Sheets,
+       y redondea los floats para evitar el problema de precisión excesiva."""
+    
     if isinstance(value, (date, datetime)):
+        # Si es una fecha u hora, la convierte a formato ISO (ej. 2025-12-13)
         return value.isoformat()
+    
     elif value is None:
+        # Si es None (como los límites que pueden ser nulos), devuelve un string vacío
         return ""
+    
+    # *** NUEVA LÍNEA CRÍTICA: Redondeo de Floats ***
+    elif isinstance(value, float):
+        # Redondeamos a 3 decimales para mantener la precisión de rendimiento y precios.
+        # Esto resuelve el problema de la cantidad "rarísima" en Google Sheets.
+        return round(value, 3) 
+        
+    # Para cualquier otro tipo (int, str que no sea None), lo deja como está o lo convierte a string
     return str(value) 
 
+# La función enviar_sheets no necesita cambios internos adicionales.
 def enviar_sheets(filas):
     if not filas or not SHEETS_URL:
         return
-    
+    # ... (el resto de la función usa clean_for_sheets en la limpieza de filas)
     try:
         creds_content = st.secrets["GOOGLE_CREDENTIALS"]
         
@@ -394,6 +410,7 @@ if st.button("GUARDAR"):
             table_messages.error(f"❌ Error crítico al guardar en TiDB: {e}. Reportar a soporte.")
     elif valid_records_count == 0:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
