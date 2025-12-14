@@ -126,7 +126,7 @@ def insertar_registros(filas):
         INSERT INTO registro_diario (
             fecha, region, plaza, unidad, tipo, modelo,
             km_inicial, km_final, km_recorridos,
-            g_gas_l, g_gas_p,
+            gas_l, gas_p,
             g_magna_l, g_magna_p,
             g_premium_l, g_premium_p,
             diesel_l, diesel_p,
@@ -410,6 +410,7 @@ if st.button("GUARDAR"):
             table_messages.error(f"❌ Error crítico al guardar en TiDB: {e}. Reportar a soporte.")
     elif valid_records_count == 0:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
