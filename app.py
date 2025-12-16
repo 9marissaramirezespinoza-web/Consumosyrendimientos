@@ -344,7 +344,7 @@ if st.button("GUARDAR"):
             continue 
 
         # --- 2. VALIDACIÓN DE KM INICIAL/FINAL (Problema A) ---
-        if km_final <= km_ini:
+        if km_final < km_ini:
             table_messages.warning(
                 f"⚠️ Omisión en la unidad {unidad}: Km Final ({km_final}) debe ser estrictamente mayor que Km Inicial ({km_ini})."
             )
@@ -421,6 +421,7 @@ if st.button("GUARDAR"):
             table_messages.error(f"❌ Error crítico al guardar en TiDB: {e}. Reportar a soporte.")
     elif valid_records_count == 0:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
