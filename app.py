@@ -368,6 +368,17 @@ if st.button("GUARDAR"):
         valid_records_count += 1 
 
         kmr = km_final - km_ini
+        # --------------------------------------------------------
+        # --- NUEVA VALIDACIÓN: KM EXCESIVO (Más de 1500 km) ---
+        if kmr > 1500:
+            # Muestra el error crítico y detiene toda la operación
+            table_messages.error(
+                f"❌ ERROR CRÍTICO en la unidad {unidad}: Kilometraje Recorrido ({kmr:,.0f} km) excede el límite de 1,500 km. "
+                "Posible error de captura. La inserción completa se ha CANCELADO. Corrija el Km Final y vuelva a intentar."
+            )
+            filas_db = [] # Asegura que no se intente guardar ningún registro
+            break # Sale inmediatamente del bucle
+        # --------------------------------------------------------
         rend = kmr / litros
         
         # --- 4. OBTENCIÓN DE LÍMITES (Problema C) ---
@@ -410,6 +421,7 @@ if st.button("GUARDAR"):
             table_messages.error(f"❌ Error crítico al guardar en TiDB: {e}. Reportar a soporte.")
     elif valid_records_count == 0:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
