@@ -347,6 +347,7 @@ if st.button("GUARDAR"):
     filas_sh = []
     hora = datetime.now().strftime("%H:%M:%S")
     valid_records_count = 0
+    has_critical_error = False # <-- INICIO DE LA BANDERA DE ERROR: Si se activa, NO se guarda nada.
     
     for index, x in ed.iterrows():
         unidad = x["Unidad"]
@@ -357,17 +358,18 @@ if st.button("GUARDAR"):
             km_ini = float(x["_km_ini"])
         except:
             if x["Km Final"]: 
-                table_messages.error(f"❌ Error en la unidad {unidad}: El campo 'Km Final' no es un número válido.")
-                filas_db = [] 
-                break 
-            continue 
+                table_messages.error(f"❌ ERROR CRÍTICO en la unidad {unidad}: El campo 'Km Final' no es un número válido. Corrija el dato.")
+                has_critical_error = True
+                break # Detiene el bucle for
+            continue # Si Km Final está vacío, pasamos a la siguiente fila
 
-        # --- 2. VALIDACIÓN DE KM INICIAL/FINAL (Problema A) ---
+        # --- 2. VALIDACIÓN DE KM INICIAL/FINAL (Permite KM Final = KM Inicial) ---
         if km_final < km_ini:
-            table_messages.warning(
-                f"⚠️ Omisión en la unidad {unidad}: Km Final ({km_final}) debe ser estrictamente mayor que Km Inicial ({km_ini})."
+            table_messages.error(
+                f"❌ ERROR CRÍTICO en la unidad {unidad}: El Kilometraje Final ({km_final:,.0f} km) es MENOR que el Km Inicial ({km_ini:,.0f} km). Corrija el Km Final."
             )
-            continue
+            has_critical_error = True
+            break # Detiene el bucle for
             
         gas = float(x["Gas (L)"] or 0)
         magna = float(x["Magna (L)"] or 0)
@@ -378,29 +380,35 @@ if st.button("GUARDAR"):
         
         # --- 3. VALIDACIÓN DE LITROS ---
         if litros <= 0:
-            table_messages.warning(
-                f"⚠️ Omisión en la unidad {unidad}: Se registró kilometraje, pero no se capturaron litros válidos."
-            )
-            continue
+            # Solo si ingresó KM Final mayor que el inicial, pero no Litros, es un error crítico.
+            if km_final > km_ini:
+                table_messages.error(
+                    f"❌ ERROR CRÍTICO en la unidad {unidad}: Se registró kilometraje recorrido, pero no se capturaron litros válidos. Corrija los Litros."
+                )
+                has_critical_error = True
+                break # Detiene el bucle for
+            
+            # Si Km Final == Km Inicial (0 km recorrido) y Litros <= 0, omitimos la fila.
+            continue 
             
         # El registro es VÁLIDO
         valid_records_count += 1 
 
         kmr = km_final - km_ini
-        # --------------------------------------------------------
-        # --- NUEVA VALIDACIÓN: KM EXCESIVO (Más de 1500 km) ---
+        
+        # --- 4. VALIDACIÓN DE KM EXCESIVO (Más de 1500 km) ---
         if kmr > 1500:
             # Muestra el error crítico y detiene toda la operación
             table_messages.error(
                 f"❌ ERROR CRÍTICO en la unidad {unidad}: Kilometraje Recorrido ({kmr:,.0f} km) excede el límite de 1,500 km. "
-                "Posible error de captura. La inserción completa se ha CANCELADO. Corrija el Km Final y vuelva a intentar."
+                "Posible error de captura. Corrija el Km Final."
             )
-            filas_db = [] # Asegura que no se intente guardar ningún registro
-            break # Sale inmediatamente del bucle
-        # --------------------------------------------------------
+            has_critical_error = True
+            break # Detiene el bucle for
+
         rend = kmr / litros
         
-        # --- 4. OBTENCIÓN DE LÍMITES (Problema C) ---
+        # --- 5. OBTENCIÓN DE LÍMITES Y CÁLCULOS...
         key = (normalize_key(region), normalize_key(x["_tipo"]), normalize_key(x["_modelo"]))
         lim_inf, lim_sup = limites_dict.get(key, (None, None))
         
@@ -422,23 +430,26 @@ if st.button("GUARDAR"):
             diesel, diesel * precio_diesel,
             litros, total_importe,
             rend,
-            lim_sup, lim_inf, # Los límites se obtienen aquí
+            lim_sup, lim_inf,
             hora
         )
 
         filas_db.append(fila)
         filas_sh.append(list(fila))
 
-    # 5. LÓGICA DE GUARDADO FINAL
-    if filas_db:
+    # 6. LÓGICA DE GUARDADO FINAL: Solo si no hay errores y hay algo que guardar
+    if filas_db and not has_critical_error:
         try:
             insertar_registros(filas_db)
             enviar_sheets(filas_sh)
+            ultimo_km.clear() # Limpia el caché para el próximo Km Inicial
             st.session_state.guardado_ok = True
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error crítico al guardar en TiDB: {e}. Reportar a soporte.")
-    elif valid_records_count == 0:
+    
+    # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
+    elif valid_records_count == 0 and not has_critical_error:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
 
 
