@@ -281,12 +281,31 @@ precio_premium = p3.number_input(label="Precio Premium $", value=0.0, min_value=
 precio_diesel = p4.number_input(label="Precio Diesel $", value=0.0, min_value=0.0)
 
 # ================== CAPTURA ==================
+# ================== CAPTURA ==================
 kms = ultimo_km()
 limites_dict = limites() 
 
 rows = []
-filtered_df = df[(df.Region == region) & (df.Plaza == plaza)]
+# 1. Filtramos las unidades por región y plaza
+filtered_df = df[(df.Region == region) & (df.Plaza == plaza)].copy()
 
+# -------------------------------------------------------------
+# BLOQUE PARA ORDENAR UNIDADES NUMÉRICAMENTE (DE MENOR A MAYOR)
+# -------------------------------------------------------------
+try:
+    # 2. Creamos una columna temporal de números (quitando letras como '-R')
+    filtered_df['Unidad_Num'] = filtered_df['Unidad'].str.replace(r'[^0-9]', '', regex=True).astype(int)
+    
+    # 3. Ordenamos el DataFrame por el número de unidad (menor a mayor)
+    filtered_df = filtered_df.sort_values(by='Unidad_Num', ascending=True)
+    
+    # 4. Eliminamos la columna temporal
+    filtered_df = filtered_df.drop(columns=['Unidad_Num'])
+except Exception as e:
+    # Plan B: Si falla la conversión a número, ordenamos por texto
+    filtered_df = filtered_df.sort_values(by='Unidad', ascending=True)
+# -------------------------------------------------------------
+    
 for _, r in filtered_df.iterrows():
     unidad = str(r.Unidad)
     
@@ -421,6 +440,7 @@ if st.button("GUARDAR"):
             table_messages.error(f"❌ Error crítico al guardar en TiDB: {e}. Reportar a soporte.")
     elif valid_records_count == 0:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
