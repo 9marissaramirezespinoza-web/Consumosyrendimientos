@@ -343,6 +343,11 @@ table_messages = st.container()
 
 # ================== GUARDAR ==================
 if st.button("GUARDAR"):
+    # --- VALIDACIÓN DE PRECIOS OBLIGATORIOS ---
+    if precio_gas <= 0 or precio_magna <= 0 or precio_premium <= 0 or precio_diesel <= 0:
+        table_messages.error("❌ ERROR: Debe ingresar los precios de TODOS los combustibles (Gas, Magna, Premium y Diesel) antes de guardar.")
+        st.stop()
+    # ------------------------------------------
     filas_db = []
     filas_sh = []
     hora = datetime.now().strftime("%H:%M:%S")
@@ -451,6 +456,7 @@ if st.button("GUARDAR"):
     # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
     elif valid_records_count == 0 and not has_critical_error:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
