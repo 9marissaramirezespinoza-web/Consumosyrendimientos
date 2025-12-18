@@ -272,6 +272,11 @@ with c3:
     if fecha > date.today():
         st.error("No se pueden registrar consumos en fechas futuras.")
         st.stop()
+        # --- BLOQUEO POR CAPTURA REALIZADA ---
+if ya_hay_captura(region, plaza, fecha):
+    st.markdown("---")
+    st.info("🌟 **Gracias por capturar el día de hoy, nos vemos mañana.**")
+    st.stop() # Esto evita que se carguen los precios, la tabla y el botón de guardar
 
 # -------- Precios (Se usan keywords como medida de robustez) --------
 p1, p2, p3, p4 = st.columns(4)
@@ -456,6 +461,7 @@ if st.button("GUARDAR"):
     # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
     elif valid_records_count == 0 and not has_critical_error:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
