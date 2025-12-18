@@ -117,7 +117,11 @@ def limites():
         (float(r["limite_inferior"] or 0), float(r["limite_superior"] or 0))
         for _, r in df.iterrows()
     }
-
+def ya_hay_captura(reg, plz, fec):
+    """Revisa si ya existen registros para la región, plaza y fecha seleccionada."""
+    query = f"SELECT COUNT(*) as cuenta FROM registro_diario WHERE region = '{reg}' AND plaza = '{plz}' AND fecha = '{fec}'"
+    df_check = run_select(query)
+    return df_check["cuenta"].iloc[0] > 0
 
 # ================== INSERT EN DB ==================
 def insertar_registros(filas):
@@ -461,6 +465,7 @@ if st.button("GUARDAR"):
     # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
     elif valid_records_count == 0 and not has_critical_error:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
