@@ -82,13 +82,13 @@ def normalize_key(value):
 
 @st.cache_data(ttl=300)
 def cargar_catalogo():
-df = run_select("""
+    # Estas líneas de abajo NO pueden estar pegadas a la orilla
+    # Deben tener 4 espacios de separación
+    df = run_select("""
         SELECT region, plaza, unidad, tipo, modelo, anio, km_inicial, limite_superior, limite_inferior
         FROM catalogo_unidades
     """)
-    # Esto limpia los datos por si quedó algún vacío
     df = df.fillna(0)
-    
     return df.rename(columns={
         "region": "Region", "plaza": "Plaza", "unidad": "Unidad",
         "tipo": "Tipo", "modelo": "Modelo", "anio": "Anio",
@@ -461,6 +461,7 @@ lim_inf = x["_lim_inf"] if x["_lim_inf"] > 0 else None
     # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
     elif valid_records_count == 0 and not has_critical_error:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
