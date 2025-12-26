@@ -416,11 +416,10 @@ if st.button("GUARDAR✅"):
             break # Detiene el bucle for
 
         rend = kmr / litros
-        
-        # --- 5. OBTENCIÓN DE LÍMITES Y CÁLCULOS...
-       # Leemos los límites directamente de la fila (ya no usamos diccionarios)
-lim_sup = x["_lim_sup"] if x["_lim_sup"] > 0 else None
-lim_inf = x["_lim_inf"] if x["_lim_inf"] > 0 else None
+            
+        # --- OBTENCIÓN DE LÍMITES ---
+        lim_sup = x["_lim_sup"] if x["_lim_sup"] > 0 else None
+        lim_inf = x["_lim_inf"] if x["_lim_inf"] > 0 else None
         
         # --- CÁLCULO DE IMPORTE ---
         total_importe = (
@@ -461,6 +460,7 @@ lim_inf = x["_lim_inf"] if x["_lim_inf"] > 0 else None
     # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
     elif valid_records_count == 0 and not has_critical_error:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
