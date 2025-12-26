@@ -82,13 +82,17 @@ def normalize_key(value):
 
 @st.cache_data(ttl=300)
 def cargar_catalogo():
-    df = run_select("""
-        SELECT region, plaza, unidad, tipo, modelo, km_inicial
+df = run_select("""
+        SELECT region, plaza, unidad, tipo, modelo, anio, km_inicial, limite_superior, limite_inferior
         FROM catalogo_unidades
     """)
+    # Esto limpia los datos por si quedó algún vacío
+    df = df.fillna(0)
+    
     return df.rename(columns={
         "region": "Region", "plaza": "Plaza", "unidad": "Unidad",
-        "tipo": "Tipo", "modelo": "Modelo", "km_inicial": "Km inicial"
+        "tipo": "Tipo", "modelo": "Modelo", "anio": "Anio",
+        "km_inicial": "Km inicial", "limite_superior": "lim_sup", "limite_inferior": "lim_inf"
     })
 
 @st.cache_data(ttl=300)
@@ -101,22 +105,6 @@ def ultimo_km():
     # Usamos str() para la unidad para asegurar que la clave del diccionario sea consistente
     return {str(r["unidad"]): float(r["km"] or 0) for _, r in df.iterrows()}
 
-@st.cache_data(ttl=300)
-def limites():
-    df = run_select("""
-        SELECT region, tipo, modelo, limite_superior, limite_inferior
-        FROM limites_rendimiento
-    """)
-    # Normalizamos las claves al cargarlas para la búsqueda (Problema C)
-    return {
-        (
-            normalize_key(r["region"]),
-            normalize_key(r["tipo"]),
-            normalize_key(r["modelo"])
-        ):
-        (float(r["limite_inferior"] or 0), float(r["limite_superior"] or 0))
-        for _, r in df.iterrows()
-    }
 def ya_hay_captura(reg, plz, fec):
     """Revisa si ya existen registros para la región, plaza y fecha seleccionada."""
     query = f"SELECT COUNT(*) as cuenta FROM registro_diario WHERE region = '{reg}' AND plaza = '{plz}' AND fecha = '{fec}'"
@@ -292,7 +280,6 @@ precio_diesel = p4.number_input(label="Precio Diesel $", value=0.0, min_value=0.
 # ================== CAPTURA ==================
 # ================== CAPTURA ==================
 kms = ultimo_km()
-limites_dict = limites() 
 
 rows = []
 # 1. Filtramos las unidades por región y plaza
@@ -337,16 +324,24 @@ for _, r in filtered_df.iterrows():
         # Campos ocultos
         "_km_ini": km_ini, 
         "_tipo": r.Tipo,
-        "_modelo": r.Modelo
+        "_modelo": r.Modelo,
+        "_anio": r.Anio,        # <--- Aquí guardamos el año
+        "_lim_sup": r.lim_sup,  # <--- Aquí el límite máximo
+        "_lim_inf": r.lim_inf   # <--- Aquí el límite mínimo
     })
 
 ed = st.data_editor(
     pd.DataFrame(rows),
     hide_index=True,
-    # Se asegura que la columna de Km inicial sea la correcta
-    column_config={"_km_ini": None, "_tipo": None, "_modelo": None} 
+    column_config={
+        "_km_ini": None, 
+        "_tipo": None, 
+        "_modelo": None,
+        "_anio": None,    # <--- Escondido
+        "_lim_sup": None, # <--- Escondido
+        "_lim_inf": None  # <--- Escondido
+    } 
 )
-
 # Contenedor para mostrar mensajes de error/warning específicos de la tabla
 table_messages = st.container()
 
@@ -423,8 +418,9 @@ if st.button("GUARDAR✅"):
         rend = kmr / litros
         
         # --- 5. OBTENCIÓN DE LÍMITES Y CÁLCULOS...
-        key = (normalize_key(region), normalize_key(x["_tipo"]), normalize_key(x["_modelo"]))
-        lim_inf, lim_sup = limites_dict.get(key, (None, None))
+       # Leemos los límites directamente de la fila (ya no usamos diccionarios)
+lim_sup = x["_lim_sup"] if x["_lim_sup"] > 0 else None
+lim_inf = x["_lim_inf"] if x["_lim_inf"] > 0 else None
         
         # --- CÁLCULO DE IMPORTE ---
         total_importe = (
@@ -465,6 +461,7 @@ if st.button("GUARDAR✅"):
     # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
     elif valid_records_count == 0 and not has_critical_error:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
