@@ -345,11 +345,11 @@ ed = st.data_editor(
 # Contenedor para mostrar mensajes de error/warning específicos de la tabla
 table_messages = st.container()
 
-# ================== GUARDAR ==================
+# ================== GUARDAR (BLOQUE FINAL CORREGIDO) ==================
 if st.button("GUARDAR✅"):
     # 1. VALIDACIÓN DE PRECIOS
     if precio_gas <= 0 or precio_magna <= 0 or precio_premium <= 0 or precio_diesel <= 0:
-        table_messages.error("❌ ERROR: Debe ingresar los precios de TODOS los combustibles.")
+        table_messages.error("❌ ERROR: Ingresa los precios de todos los combustibles.")
         st.stop()
 
     filas_db = []
@@ -358,44 +358,51 @@ if st.button("GUARDAR✅"):
     valid_records_count = 0
     has_critical_error = False 
 
-    # --- EL FOR DEBE ESTAR IDENTADO (CON ESPACIOS) ---
+    # --- ESTE CICLO DEBE ESTAR DENTRO DEL BOTÓN (4 espacios) ---
     for index, x in ed.iterrows():
         unidad = x["Unidad"]
         
         try:
-            km_final = float(x["Km Final"])
+            # Si el usuario dejó vacío el Km Final, lo tratamos como 0
+            km_f_val = x["Km Final"] if x["Km Final"] != "" else 0
+            km_final = float(km_f_val)
             km_ini = float(x["_km_ini"])
         except:
             if x["Km Final"]: 
-                table_messages.error(f"❌ Error en unidad {unidad}: El Km Final no es un número.")
+                table_messages.error(f"❌ Error en unidad {unidad}: Km Final inválido.")
                 has_critical_error = True
                 break
             continue 
 
+        # Suma de litros
         gas = float(x["Gas (L)"] or 0)
         magna = float(x["Magna (L)"] or 0)
         premium = float(x["Premium (L)"] or 0)
         diesel = float(x["Diesel (L)"] or 0)
         litros = gas + magna + premium + diesel
         
-        if litros <= 0:
-            if km_final != km_ini: 
-                table_messages.error(f"❌ Error en {unidad}: Registraste movimiento pero no pusiste litros.")
-                has_critical_error = True
-                break
-            continue 
+        # Ignorar unidades que no tienen movimiento ni carga
+        if litros <= 0 and (km_final == 0 or km_final == km_ini):
+            continue
+
+        # Validación: Si se movió, tiene que haber cargado algo
+        if litros <= 0 and km_final != km_ini:
+            table_messages.error(f"❌ Error en {unidad}: Registraste movimiento pero no pusiste litros.")
+            has_critical_error = True
+            break
             
         valid_records_count += 1 
         kmr = km_final - km_ini 
         rend = kmr / litros if litros > 0 else 0
             
-        # Cambiamos None por 0.0 para que Power BI no marque error
-        lim_sup = float(x["_lim_sup"]) if x["_lim_sup"] > 0 else 0.0
-        lim_inf = float(x["_lim_inf"]) if x["_lim_inf"] > 0 else 0.0
+        # Valores de límites (si no hay, mandamos 0)
+        l_sup = float(x["_lim_sup"]) if x["_lim_sup"] > 0 else 0.0
+        l_inf = float(x["_lim_inf"]) if x["_lim_inf"] > 0 else 0.0
         
         total_importe = (gas * precio_gas + magna * precio_magna + 
                          premium * precio_premium + diesel * precio_diesel)
 
+        # ARMAR FILA (23 columnas exactas para tu base de datos)
         fila = (
             fecha, region, plaza, unidad, x["_tipo"], x["_modelo"],
             km_ini, km_final, kmr,
@@ -404,25 +411,26 @@ if st.button("GUARDAR✅"):
             premium, premium * precio_premium,
             diesel, diesel * precio_diesel,
             litros, total_importe,
-            rend, lim_sup, lim_inf, hora
+            rend, l_sup, l_inf, hora
         )
         filas_db.append(fila)
         filas_sh.append(list(fila))
 
-    # Solo guarda si terminó el ciclo sin errores críticos
+    # --- EL GUARDADO DEBE ESTAR DENTRO DEL BOTÓN (4 espacios) ---
     if filas_db and not has_critical_error:
         try:
+            # Primero guardamos en TiDB
             insertar_registros(filas_db)
+            # Si TiDB funcionó, guardamos en Sheets
             enviar_sheets(filas_sh)
+            
             ultimo_km.clear() 
             st.session_state.guardado_ok = True
             st.rerun()
         except Exception as e:
-            table_messages.error(f"❌ Error crítico al guardar: {e}")
-    # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
-    elif valid_records_count == 0 and not has_critical_error:
-        table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
-
+            table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+    elif not has_critical_error and valid_records_count == 0:
+        table_messages.warning("⚠️ No hay datos para guardar. Revisa el Km Final.")
 
 
 
