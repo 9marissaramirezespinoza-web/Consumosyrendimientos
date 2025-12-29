@@ -347,21 +347,21 @@ table_messages = st.container()
 
 # ================== GUARDAR ==================
 if st.button("GUARDAR✅"):
-    # --- VALIDACIÓN DE PRECIOS OBLIGATORIOS ---
+    # 1. VALIDACIÓN DE PRECIOS
     if precio_gas <= 0 or precio_magna <= 0 or precio_premium <= 0 or precio_diesel <= 0:
-        table_messages.error("❌ ERROR: Debe ingresar los precios de TODOS los combustibles (Gas, Magna, Premium y Diesel) antes de guardar.")
+        table_messages.error("❌ ERROR: Debe ingresar los precios de TODOS los combustibles.")
         st.stop()
-    # ------------------------------------------
+
     filas_db = []
     filas_sh = []
     hora = datetime.now().strftime("%H:%M:%S")
     valid_records_count = 0
-    has_critical_error = False # <-- INICIO DE LA BANDERA DE ERROR: Si se activa, NO se guarda nada.
-    
-for index, x in ed.iterrows():
+    has_critical_error = False 
+
+    # --- EL FOR DEBE ESTAR IDENTADO (CON ESPACIOS) ---
+    for index, x in ed.iterrows():
         unidad = x["Unidad"]
         
-        # 1. Convertir datos a números
         try:
             km_final = float(x["Km Final"])
             km_ini = float(x["_km_ini"])
@@ -372,14 +372,12 @@ for index, x in ed.iterrows():
                 break
             continue 
 
-        # 2. Sumar litros
         gas = float(x["Gas (L)"] or 0)
         magna = float(x["Magna (L)"] or 0)
         premium = float(x["Premium (L)"] or 0)
         diesel = float(x["Diesel (L)"] or 0)
         litros = gas + magna + premium + diesel
         
-        # 3. Validación de litros (Solo para no guardar basura)
         if litros <= 0:
             if km_final != km_ini: 
                 table_messages.error(f"❌ Error en {unidad}: Registraste movimiento pero no pusiste litros.")
@@ -387,18 +385,17 @@ for index, x in ed.iterrows():
                 break
             continue 
             
-        # 4. CÁLCULOS (Aquí ya no hay candados de 1500km ni de km menor)
         valid_records_count += 1 
         kmr = km_final - km_ini 
         rend = kmr / litros if litros > 0 else 0
             
-        # 5. Importes y límites
-        lim_sup = x["_lim_sup"] if x["_lim_sup"] > 0 else None
-        lim_inf = x["_lim_inf"] if x["_lim_inf"] > 0 else None
+        # Cambiamos None por 0.0 para que Power BI no marque error
+        lim_sup = float(x["_lim_sup"]) if x["_lim_sup"] > 0 else 0.0
+        lim_inf = float(x["_lim_inf"]) if x["_lim_inf"] > 0 else 0.0
+        
         total_importe = (gas * precio_gas + magna * precio_magna + 
                          premium * precio_premium + diesel * precio_diesel)
 
-        # 6. Armar la fila para TiDB y Excel
         fila = (
             fecha, region, plaza, unidad, x["_tipo"], x["_modelo"],
             km_ini, km_final, kmr,
@@ -407,27 +404,25 @@ for index, x in ed.iterrows():
             premium, premium * precio_premium,
             diesel, diesel * precio_diesel,
             litros, total_importe,
-            rend,
-            lim_sup, lim_inf,
-            hora
+            rend, lim_sup, lim_inf, hora
         )
         filas_db.append(fila)
         filas_sh.append(list(fila))
 
-    # 6. LÓGICA DE GUARDADO FINAL: Solo si no hay errores y hay algo que guardar
+    # Solo guarda si terminó el ciclo sin errores críticos
     if filas_db and not has_critical_error:
         try:
             insertar_registros(filas_db)
             enviar_sheets(filas_sh)
-            ultimo_km.clear() # Limpia el caché para el próximo Km Inicial
+            ultimo_km.clear() 
             st.session_state.guardado_ok = True
             st.rerun()
         except Exception as e:
-            table_messages.error(f"❌ Error crítico al guardar en TiDB: {e}. Reportar a soporte.")
-    
+            table_messages.error(f"❌ Error crítico al guardar: {e}")
     # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
     elif valid_records_count == 0 and not has_critical_error:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
