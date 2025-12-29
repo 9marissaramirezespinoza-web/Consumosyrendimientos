@@ -75,15 +75,12 @@ def run_execute(query, params):
 # ================== DATA FETCH & CACHE ==================
 
 def normalize_key(value):
-    """Normaliza una cadena a MAYÚSCULAS y elimina espacios para un lookup seguro."""
     if value is not None:
         return str(value).strip().upper()
     return ""
 
 @st.cache_data(ttl=300)
 def cargar_catalogo():
-    # Estas líneas de abajo NO pueden estar pegadas a la orilla
-    # Deben tener 4 espacios de separación
     df = run_select("""
         SELECT region, plaza, unidad, tipo, modelo, anio, km_inicial, limite_superior, limite_inferior
         FROM catalogo_unidades
@@ -102,18 +99,15 @@ def ultimo_km():
         FROM registro_diario
         GROUP BY unidad
     """)
-    # Usamos str() para la unidad para asegurar que la clave del diccionario sea consistente
     return {str(r["unidad"]): float(r["km"] or 0) for _, r in df.iterrows()}
 
 def ya_hay_captura(reg, plz, fec):
-    """Revisa si ya existen registros para la región, plaza y fecha seleccionada."""
     query = f"SELECT COUNT(*) as cuenta FROM registro_diario WHERE region = '{reg}' AND plaza = '{plz}' AND fecha = '{fec}'"
     df_check = run_select(query)
     return df_check["cuenta"].iloc[0] > 0
 
 # ================== INSERT EN DB ==================
 def insertar_registros(filas):
-    """Inserta las filas en TiDB Cloud."""
     run_execute("""
         INSERT INTO registro_diario (
             fecha, region, plaza, unidad, tipo, modelo,
@@ -127,310 +121,157 @@ def insertar_registros(filas):
             limite_superior, limite_inferior,
             hora_registro
         )
-        VALUES (
-            %s,%s,%s,%s,%s,%s,
-            %s,%s,%s,
-            %s,%s,
-            %s,%s,
-            %s,%s,
-            %s,%s,
-            %s,%s,
-            %s,
-            %s,%s,
-            %s
-        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, filas)
 
-# ================== GOOGLE SHEETS (BEST EFFORT) ==================
-
-# ================== GOOGLE SHEETS (BEST EFFORT) - CORRECCIÓN DE PRECISIÓN ==================
-
+# ================== GOOGLE SHEETS ==================
 def clean_for_sheets(value):
-    """Convierte tipos no serializables (date, None) a string/float para Sheets,
-       y redondea los floats para evitar el problema de precisión excesiva."""
-    
     if isinstance(value, (date, datetime)):
-        # Si es una fecha u hora, la convierte a formato ISO (ej. 2025-12-13)
         return value.isoformat()
-    
     elif value is None:
-        # Si es None (como los límites que pueden ser nulos), devuelve un string vacío
         return ""
-    
-    # *** NUEVA LÍNEA CRÍTICA: Redondeo de Floats ***
     elif isinstance(value, float):
-        # Redondeamos a 3 decimales para mantener la precisión de rendimiento y precios.
-        # Esto resuelve el problema de la cantidad "rarísima" en Google Sheets.
         return round(value, 3) 
-        
-    # Para cualquier otro tipo (int, str que no sea None), lo deja como está o lo convierte a string
     return str(value) 
 
-# La función enviar_sheets no necesita cambios internos adicionales.
 def enviar_sheets(filas):
     if not filas or not SHEETS_URL:
         return
-    # ... (el resto de la función usa clean_for_sheets en la limpieza de filas)
     try:
         creds_content = st.secrets["GOOGLE_CREDENTIALS"]
-        
-        # Manejo de la carga de credenciales (TOML/JSON)
-        if isinstance(creds_content, str):
-             creds_dict = json.loads(creds_content)
-        else:
-            creds_dict = creds_content
-
+        creds_dict = json.loads(creds_content) if isinstance(creds_content, str) else creds_content
         creds = Credentials.from_service_account_info(
             creds_dict,
             scopes=["https://www.googleapis.com/auth/spreadsheets"]
         )
         client = gspread.authorize(creds)
         ws = client.open_by_url(SHEETS_URL).worksheet(SHEETS_TAB)
-        
-        # Limpieza de datos antes de enviar (Solución a TypeError)
-        filas_limpias = [
-            [clean_for_sheets(value) for value in fila] 
-            for fila in filas
-        ]
-
+        filas_limpias = [[clean_for_sheets(v) for v in fila] for fila in filas]
         ws.append_rows(filas_limpias, value_input_option="USER_ENTERED")
-        
     except Exception as e:
         st.session_state.sheets_error = f"Sheets Falló: {e}"
-        pass  
 
-# ================== ADMIN ==================
+# ================== UI ==================
 with st.sidebar:
     st.header("🔐 Admin")
     if st.text_input("Contraseña", type="password") == PASSWORD_ADMIN:
         if SHEETS_URL:
-            st.markdown(
-                f'<a href="{SHEETS_URL}" target="_blank">'
-                f'<button class="admin-button">📄 Abrir Google Sheets</button></a>',
-                unsafe_allow_html=True
-            )
+            st.markdown(f'<a href="{SHEETS_URL}" target="_blank"><button class="admin-button">📄 Abrir Sheets</button></a>', unsafe_allow_html=True)
         st.stop()
 
-# ================== UI ==================
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
-# MENSAJE POST-GUARDADO (Solución a Problema B)
 if st.session_state.guardado_ok:
-    st.success("✅ Guardado correctamente.")
-    
-    # Muestra el error de Sheets si ocurrió
+    st.success("✅ Guardado correctamente en la base de datos.")
     if st.session_state.get("sheets_error"):
-         st.warning(f"⚠️ Atención: TiDB guardó, pero la sincronización con Sheets falló: {st.session_state.sheets_error}")
-         del st.session_state.sheets_error
-
+        st.warning(f"⚠️ TiDB guardó, pero Sheets falló: {st.session_state.sheets_error}")
+        del st.session_state.sheets_error
     st.session_state.guardado_ok = False
 
-
 df = cargar_catalogo()
-if df.empty:
-    st.error("Catálogo vacío")
-    st.stop()
-
-# -------- Región por link --------
 region_param = st.query_params.get("region")
 if not region_param:
-    st.error("Link inválido: falta ?region=REGION_SUR.")
+    st.error("Link inválido.")
     st.stop()
 
-# Normalización para búsqueda de región
 region_param_norm = normalize_key(region_param)
 df["REGION_NORM"] = df["Region"].apply(normalize_key)
-
-if region_param_norm not in df["REGION_NORM"].unique():
-    st.error(f"Región no válida en el link: {region_param}")
-    st.stop()
-
-# Obtenemos la versión original de la región para la UI y la DB
 region = df[df["REGION_NORM"] == region_param_norm]["Region"].iloc[0]
 
-# -------- Región / Plaza / Fecha --------
 c1, c2, c3 = st.columns(3)
-with c1:
-    st.info(f"REGIÓN\n\n**{region}**")
+with c1: st.info(f"REGIÓN\n\n**{region}**")
+with c2: plaza = st.selectbox("PLAZA", sorted(df[df["Region"] == region]["Plaza"].unique()))
+with c3: fecha = st.date_input("FECHA", date.today())
 
-with c2:
-    plaza = st.selectbox(
-        "PLAZA",
-        sorted(df[df["Region"] == region]["Plaza"].unique())
-    )
-
-with c3:
-    fecha = st.date_input("FECHA", date.today())
-    if fecha > date.today():
-        st.error("No se pueden registrar consumos en fechas futuras.")
-        st.stop()
-        # --- BLOQUEO POR CAPTURA REALIZADA ---
 if ya_hay_captura(region, plaza, fecha):
-    st.markdown("---")
-    st.info("🌟 **Gracias por capturar el día de hoy, nos vemos mañana.**")
-    st.stop() # Esto evita que se carguen los precios, la tabla y el botón de guardar
+    st.info("🌟 **Gracias por capturar el día de hoy.**")
+    st.stop()
 
-# -------- Precios (Se usan keywords como medida de robustez) --------
 p1, p2, p3, p4 = st.columns(4)
-precio_gas = p1.number_input(label="Precio Gas $", value=0.0, min_value=0.0)
-precio_magna = p2.number_input(label="Precio Magna $", value=0.0, min_value=0.0)
-precio_premium = p3.number_input(label="Precio Premium $", value=0.0, min_value=0.0)
-precio_diesel = p4.number_input(label="Precio Diesel $", value=0.0, min_value=0.0)
+precio_gas = p1.number_input("Precio Gas $", value=0.0, min_value=0.0)
+precio_magna = p2.number_input("Precio Magna $", value=0.0, min_value=0.0)
+precio_premium = p3.number_input("Precio Premium $", value=0.0, min_value=0.0)
+precio_diesel = p4.number_input("Precio Diesel $", value=0.0, min_value=0.0)
 
-# ================== CAPTURA ==================
 # ================== CAPTURA ==================
 kms = ultimo_km()
+filtered_df = df[(df.Region == region) & (df.Plaza == plaza)].copy()
+try:
+    filtered_df['Unidad_Num'] = filtered_df['Unidad'].str.replace(r'[^0-9]', '', regex=True).astype(int)
+    filtered_df = filtered_df.sort_values(by='Unidad_Num', ascending=True)
+except:
+    filtered_df = filtered_df.sort_values(by='Unidad', ascending=True)
 
 rows = []
-# 1. Filtramos las unidades por región y plaza
-filtered_df = df[(df.Region == region) & (df.Plaza == plaza)].copy()
-
-# -------------------------------------------------------------
-# BLOQUE PARA ORDENAR UNIDADES NUMÉRICAMENTE (DE MENOR A MAYOR)
-# -------------------------------------------------------------
-try:
-    # 2. Creamos una columna temporal de números (quitando letras como '-R')
-    filtered_df['Unidad_Num'] = filtered_df['Unidad'].str.replace(r'[^0-9]', '', regex=True).astype(int)
-    
-    # 3. Ordenamos el DataFrame por el número de unidad (menor a mayor)
-    filtered_df = filtered_df.sort_values(by='Unidad_Num', ascending=True)
-    
-    # 4. Eliminamos la columna temporal
-    filtered_df = filtered_df.drop(columns=['Unidad_Num'])
-except Exception as e:
-    # Plan B: Si falla la conversión a número, ordenamos por texto
-    filtered_df = filtered_df.sort_values(by='Unidad', ascending=True)
-# -------------------------------------------------------------
-    
 for _, r in filtered_df.iterrows():
     unidad = str(r.Unidad)
-    
-    # **LÓGICA CORREGIDA KM INICIAL (Solución a Problema A)**
     km_previo = kms.get(unidad) 
-    
-    if km_previo is not None and km_previo > 0:
-        km_ini = km_previo # Km final del día anterior (registro_diario)
-    else:
-        # Si no hay registros, usar el Km inicial base del catálogo
-        km_ini = float(r["Km inicial"] or 0)
-        
-    rows.append({
-        "Unidad": unidad,
-        "Km Final": "",
-        "Gas (L)": 0.0,
-        "Magna (L)": 0.0,
-        "Premium (L)": 0.0,
-        "Diesel (L)": 0.0,
-        # Campos ocultos
-        "_km_ini": km_ini, 
-        "_tipo": r.Tipo,
-        "_modelo": r.Modelo,
-        "_anio": r.Anio,        # <--- Aquí guardamos el año
-        "_lim_sup": r.lim_sup,  # <--- Aquí el límite máximo
-        "_lim_inf": r.lim_inf   # <--- Aquí el límite mínimo
-    })
+    km_ini = km_previo if km_previo is not None and km_previo > 0 else float(r["Km inicial"] or 0)
+    rows.append({"Unidad": unidad, "Km Final": "", "Gas (L)": 0.0, "Magna (L)": 0.0, "Premium (L)": 0.0, "Diesel (L)": 0.0,
+                 "_km_ini": km_ini, "_tipo": r.Tipo, "_modelo": r.Modelo, "_lim_sup": r.lim_sup, "_lim_inf": r.lim_inf})
 
-ed = st.data_editor(
-    pd.DataFrame(rows),
-    hide_index=True,
-    column_config={
-        "_km_ini": None, 
-        "_tipo": None, 
-        "_modelo": None,
-        "_anio": None,    # <--- Escondido
-        "_lim_sup": None, # <--- Escondido
-        "_lim_inf": None  # <--- Escondido
-    } 
-)
-# Contenedor para mostrar mensajes de error/warning específicos de la tabla
+ed = st.data_editor(pd.DataFrame(rows), hide_index=True, column_config={"_km_ini":None, "_tipo":None, "_modelo":None, "_lim_sup":None, "_lim_inf":None})
 table_messages = st.container()
 
-# ================== GUARDAR (BLOQUE FINAL CORREGIDO) ==================
+# ================== GUARDAR (LIBRE DE LÍMITES KM) ==================
 if st.button("GUARDAR✅"):
-    # 1. VALIDACIÓN DE PRECIOS
     if precio_gas <= 0 or precio_magna <= 0 or precio_premium <= 0 or precio_diesel <= 0:
-        table_messages.error("❌ ERROR: Ingresa los precios de todos los combustibles.")
+        table_messages.error("❌ ERROR: Ingrese todos los precios.")
         st.stop()
 
-    filas_db = []
-    filas_sh = []
+    filas_db, filas_sh = [], []
     hora = datetime.now().strftime("%H:%M:%S")
-    valid_records_count = 0
-    has_critical_error = False 
-
-    # --- ESTE CICLO DEBE ESTAR DENTRO DEL BOTÓN (4 espacios) ---
+    has_critical_error = False
+    
     for index, x in ed.iterrows():
-        unidad = x["Unidad"]
-        
         try:
-            # Si el usuario dejó vacío el Km Final, lo tratamos como 0
-            km_f_val = x["Km Final"] if x["Km Final"] != "" else 0
-            km_final = float(km_f_val)
+            km_final = float(x["Km Final"])
             km_ini = float(x["_km_ini"])
         except:
             if x["Km Final"]: 
-                table_messages.error(f"❌ Error en unidad {unidad}: Km Final inválido.")
+                table_messages.error(f"❌ Km Final inválido en {x['Unidad']}")
                 has_critical_error = True
                 break
-            continue 
-
-        # Suma de litros
-        gas = float(x["Gas (L)"] or 0)
-        magna = float(x["Magna (L)"] or 0)
-        premium = float(x["Premium (L)"] or 0)
-        diesel = float(x["Diesel (L)"] or 0)
-        litros = gas + magna + premium + diesel
-        
-        # Ignorar unidades que no tienen movimiento ni carga
-        if litros <= 0 and (km_final == 0 or km_final == km_ini):
             continue
 
-        # Validación: Si se movió, tiene que haber cargado algo
+        gas, magna, premium, diesel = [float(x[c] or 0) for c in ["Gas (L)", "Magna (L)", "Premium (L)", "Diesel (L)"]]
+        litros = gas + magna + premium + diesel
+        
+        # Saltamos si no hay litros y no se movió el kilometraje
+        if litros <= 0 and km_final == km_ini:
+            continue
+
+        # Si se movió pero no hay litros, error
         if litros <= 0 and km_final != km_ini:
-            table_messages.error(f"❌ Error en {unidad}: Registraste movimiento pero no pusiste litros.")
+            table_messages.error(f"❌ Error en {x['Unidad']}: Falta capturar litros.")
             has_critical_error = True
             break
-            
-        valid_records_count += 1 
-        kmr = km_final - km_ini 
-        rend = kmr / litros if litros > 0 else 0
-            
-        # Valores de límites (si no hay, mandamos 0)
-        l_sup = float(x["_lim_sup"]) if x["_lim_sup"] > 0 else 0.0
-        l_inf = float(x["_lim_inf"]) if x["_lim_inf"] > 0 else 0.0
-        
-        total_importe = (gas * precio_gas + magna * precio_magna + 
-                         premium * precio_premium + diesel * precio_diesel)
 
-        # ARMAR FILA (23 columnas exactas para tu base de datos)
-        fila = (
-            fecha, region, plaza, unidad, x["_tipo"], x["_modelo"],
-            km_ini, km_final, kmr,
-            gas, gas * precio_gas,
-            magna, magna * precio_magna,
-            premium, premium * precio_premium,
-            diesel, diesel * precio_diesel,
-            litros, total_importe,
-            rend, l_sup, l_inf, hora
-        )
+        # CÁLCULOS SIN RESTRICCIONES DE 1500KM O KM MENOR
+        kmr = km_final - km_ini
+        rend = kmr / litros if litros > 0 else 0
+        total_importe = (gas*precio_gas + magna*precio_magna + premium*precio_premium + diesel*precio_diesel)
+
+        fila = (fecha, region, plaza, x["Unidad"], x["_tipo"], x["_modelo"], km_ini, km_final, kmr,
+                gas, gas*precio_gas, magna, magna*precio_magna, premium, premium*precio_premium,
+                diesel, diesel*precio_diesel, litros, total_importe, rend,
+                x["_lim_sup"] if x["_lim_sup"] > 0 else None, 
+                x["_lim_inf"] if x["_lim_inf"] > 0 else None, hora)
+
         filas_db.append(fila)
         filas_sh.append(list(fila))
 
-    # --- EL GUARDADO DEBE ESTAR DENTRO DEL BOTÓN (4 espacios) ---
     if filas_db and not has_critical_error:
         try:
-            # Primero guardamos en TiDB
             insertar_registros(filas_db)
-            # Si TiDB funcionó, guardamos en Sheets
             enviar_sheets(filas_sh)
-            
-            ultimo_km.clear() 
+            ultimo_km.clear()
             st.session_state.guardado_ok = True
             st.rerun()
         except Exception as e:
-            table_messages.error(f"❌ Error al guardar en TiDB: {e}")
-    elif not has_critical_error and valid_records_count == 0:
-        table_messages.warning("⚠️ No hay datos para guardar. Revisa el Km Final.")
+            table_messages.error(f"❌ Error en TiDB: {e}")
+    elif not has_critical_error:
+        table_messages.warning("⚠️ No hay datos para guardar.")
 
 
 
