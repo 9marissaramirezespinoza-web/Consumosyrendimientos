@@ -372,14 +372,7 @@ if st.button("GUARDAR✅"):
                 break # Detiene el bucle for
             continue # Si Km Final está vacío, pasamos a la siguiente fila
 
-        # --- 2. VALIDACIÓN DE KM INICIAL/FINAL (Permite KM Final = KM Inicial) ---
-        if km_final < km_ini:
-            table_messages.error(
-                f"❌ ERROR CRÍTICO en la unidad {unidad}: El Kilometraje Final ({km_final:,.0f} km) es MENOR que el Km Inicial ({km_ini:,.0f} km). Corrija el Km Final."
-            )
-            has_critical_error = True
-            break # Detiene el bucle for
-            
+        # --- 2. VALIDACIÓN DE KM INICIAL/FINAL (Permite KM Final = KM Inicial) --- 
         gas = float(x["Gas (L)"] or 0)
         magna = float(x["Magna (L)"] or 0)
         premium = float(x["Premium (L)"] or 0)
@@ -406,15 +399,6 @@ if st.button("GUARDAR✅"):
         kmr = km_final - km_ini
         
         # --- 4. VALIDACIÓN DE KM EXCESIVO (Más de 1500 km) ---
-        if kmr > 1500:
-            # Muestra el error crítico y detiene toda la operación
-            table_messages.error(
-                f"❌ ERROR CRÍTICO en la unidad {unidad}: Kilometraje Recorrido ({kmr:,.0f} km) excede el límite de 1,500 km. "
-                "Posible error de captura. Corrija el Km Final."
-            )
-            has_critical_error = True
-            break # Detiene el bucle for
-
         rend = kmr / litros
             
         # --- OBTENCIÓN DE LÍMITES ---
@@ -460,6 +444,7 @@ if st.button("GUARDAR✅"):
     # Mensaje de advertencia si no se encontró nada para guardar, pero NO hubo un error crítico de datos
     elif valid_records_count == 0 and not has_critical_error:
         table_messages.warning("⚠️ No se encontró ningún registro válido para guardar. Revise que haya llenado Km Final y Litros.")
+
 
 
 
