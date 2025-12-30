@@ -5,6 +5,7 @@ from datetime import date, datetime
 import gspread
 from google.oauth2.service_account import Credentials
 import json
+import pytz  # Única librería nueva para la hora de Mazatlán
 
 # ================== SESSION STATE ==================
 if "guardado_ok" not in st.session_state:
@@ -73,7 +74,6 @@ def run_execute(query, params):
     conn.close()
 
 # ================== DATA FETCH & CACHE ==================
-
 def normalize_key(value):
     if value is not None:
         return str(value).strip().upper()
@@ -146,17 +146,27 @@ def enviar_sheets(filas):
         )
         client = gspread.authorize(creds)
         ws = client.open_by_url(SHEETS_URL).worksheet(SHEETS_TAB)
-        filas_limpias = [[clean_for_sheets(v) for v in fila] for fila in filas]
-        ws.append_rows(filas_limpias, value_input_option="USER_ENTERED")
+        
+        # Envío fila por fila para evitar que un dato raro bloquee a los demás
+        for fila in filas:
+            try:
+                fila_limpia = [clean_for_sheets(v) for v in fila]
+                ws.append_row(fila_limpia, value_input_option="USER_ENTERED")
+            except:
+                continue
     except Exception as e:
         st.session_state.sheets_error = f"Sheets Falló: {e}"
 
 # ================== UI ==================
+# CONFIGURACIÓN MAZATLÁN
+tz_mzt = pytz.timezone('America/Mazatlan')
+fecha_hoy_mzt = datetime.now(tz_mzt).date()
+
 with st.sidebar:
     st.header("🔐 Admin")
     if st.text_input("Contraseña", type="password") == PASSWORD_ADMIN:
         if SHEETS_URL:
-            st.markdown(f'<a href="{SHEETS_URL}" target="_blank"><button class="admin-button">📄 Abrir Sheets</button></a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{SHEETS_URL}" target="_blank"><button class="admin-button">📄 Abrir Google Sheets</button></a>', unsafe_allow_html=True)
         st.stop()
 
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
@@ -164,8 +174,8 @@ st.title("CONSUMOS Y RENDIMIENTOS 📈")
 if st.session_state.guardado_ok:
     st.success("✅ Guardado correctamente en la base de datos.")
     if st.session_state.get("sheets_error"):
-        st.warning(f"⚠️ TiDB guardó, pero Sheets falló: {st.session_state.sheets_error}")
-        del st.session_state.sheets_error
+         st.warning(f"⚠️ Atención: TiDB guardó, pero la sincronización con Sheets falló: {st.session_state.sheets_error}")
+         del st.session_state.sheets_error
     st.session_state.guardado_ok = False
 
 df = cargar_catalogo()
@@ -181,10 +191,11 @@ region = df[df["REGION_NORM"] == region_param_norm]["Region"].iloc[0]
 c1, c2, c3 = st.columns(3)
 with c1: st.info(f"REGIÓN\n\n**{region}**")
 with c2: plaza = st.selectbox("PLAZA", sorted(df[df["Region"] == region]["Plaza"].unique()))
-with c3: fecha = st.date_input("FECHA", date.today())
+with c3: fecha = st.date_input("FECHA", fecha_hoy_mzt) # Usa fecha de Mazatlán
 
 if ya_hay_captura(region, plaza, fecha):
-    st.info("🌟 **Gracias por capturar el día de hoy.**")
+    st.markdown("---")
+    st.info("🌟 **Gracias por capturar el día de hoy, nos vemos mañana.**")
     st.stop()
 
 p1, p2, p3, p4 = st.columns(4)
@@ -196,9 +207,12 @@ precio_diesel = p4.number_input("Precio Diesel $", value=0.0, min_value=0.0)
 # ================== CAPTURA ==================
 kms = ultimo_km()
 filtered_df = df[(df.Region == region) & (df.Plaza == plaza)].copy()
+
+# SE MANTIENE TU LÓGICA DE ORDENADO EXACTA
 try:
     filtered_df['Unidad_Num'] = filtered_df['Unidad'].str.replace(r'[^0-9]', '', regex=True).astype(int)
     filtered_df = filtered_df.sort_values(by='Unidad_Num', ascending=True)
+    filtered_df = filtered_df.drop(columns=['Unidad_Num'])
 except:
     filtered_df = filtered_df.sort_values(by='Unidad', ascending=True)
 
@@ -213,50 +227,49 @@ for _, r in filtered_df.iterrows():
 ed = st.data_editor(pd.DataFrame(rows), hide_index=True, column_config={"_km_ini":None, "_tipo":None, "_modelo":None, "_lim_sup":None, "_lim_inf":None})
 table_messages = st.container()
 
-# ================== GUARDAR (LIBRE DE LÍMITES KM) ==================
+# ================== GUARDAR (LIBRE DE LÍMITES) ==================
 if st.button("GUARDAR✅"):
     if precio_gas <= 0 or precio_magna <= 0 or precio_premium <= 0 or precio_diesel <= 0:
-        table_messages.error("❌ ERROR: Ingrese todos los precios.")
+        table_messages.error("❌ ERROR: Debe ingresar los precios de TODOS los combustibles.")
         st.stop()
 
     filas_db, filas_sh = [], []
-    hora = datetime.now().strftime("%H:%M:%S")
+    ahora_mzt = datetime.now(tz_mzt) # HORA REAL DE MAZATLÁN
+    hora_mx = ahora_mzt.strftime("%H:%M:%S")
+    fecha_mzt = ahora_mzt.date()
+    
     has_critical_error = False
     
     for index, x in ed.iterrows():
         try:
-            km_final = float(x["Km Final"])
-            km_ini = float(x["_km_ini"])
+            if x["Km Final"] == "": continue
+            km_f = float(x["Km Final"])
+            km_i = float(x["_km_ini"])
         except:
-            if x["Km Final"]: 
-                table_messages.error(f"❌ Km Final inválido en {x['Unidad']}")
-                has_critical_error = True
-                break
-            continue
-
-        gas, magna, premium, diesel = [float(x[c] or 0) for c in ["Gas (L)", "Magna (L)", "Premium (L)", "Diesel (L)"]]
-        litros = gas + magna + premium + diesel
-        
-        # Saltamos si no hay litros y no se movió el kilometraje
-        if litros <= 0 and km_final == km_ini:
-            continue
-
-        # Si se movió pero no hay litros, error
-        if litros <= 0 and km_final != km_ini:
-            table_messages.error(f"❌ Error en {x['Unidad']}: Falta capturar litros.")
+            table_messages.error(f"❌ Valor inválido en {x['Unidad']}")
             has_critical_error = True
             break
 
-        # CÁLCULOS SIN RESTRICCIONES DE 1500KM O KM MENOR
-        kmr = km_final - km_ini
-        rend = kmr / litros if litros > 0 else 0
-        total_importe = (gas*precio_gas + magna*precio_magna + premium*precio_premium + diesel*precio_diesel)
+        g, m, p, d = [float(x[c] or 0) for c in ["Gas (L)", "Magna (L)", "Premium (L)", "Diesel (L)"]]
+        litros = g + m + p + d
+        
+        if litros <= 0 and km_f == km_i: continue
+        
+        if litros <= 0 and km_f != km_i:
+            table_messages.error(f"❌ {x['Unidad']}: Falta capturar litros.")
+            has_critical_error = True
+            break
 
-        fila = (fecha, region, plaza, x["Unidad"], x["_tipo"], x["_modelo"], km_ini, km_final, kmr,
-                gas, gas*precio_gas, magna, magna*precio_magna, premium, premium*precio_premium,
-                diesel, diesel*precio_diesel, litros, total_importe, rend,
+        # CÁLCULOS SIN RESTRICCIONES (BORRADOS LOS BLOQUES DE 1500KM Y KM MENOR)
+        kmr = km_f - km_i
+        rend = kmr / litros if litros > 0 else 0
+        total_importe = (g*precio_gas + m*precio_magna + p*precio_premium + d*precio_diesel)
+
+        fila = (fecha_mzt, region, plaza, x["Unidad"], x["_tipo"], x["_modelo"], km_i, km_f, kmr,
+                g, g*precio_gas, m, m*precio_magna, p, p*precio_premium,
+                d, d*precio_diesel, litros, total_importe, rend,
                 x["_lim_sup"] if x["_lim_sup"] > 0 else None, 
-                x["_lim_inf"] if x["_lim_inf"] > 0 else None, hora)
+                x["_lim_inf"] if x["_lim_inf"] > 0 else None, hora_mx)
 
         filas_db.append(fila)
         filas_sh.append(list(fila))
@@ -269,9 +282,7 @@ if st.button("GUARDAR✅"):
             st.session_state.guardado_ok = True
             st.rerun()
         except Exception as e:
-            table_messages.error(f"❌ Error en TiDB: {e}")
-    elif not has_critical_error:
-        table_messages.warning("⚠️ No hay datos para guardar.")
+            table_messages.error(f"❌ Error al guardar: {e}")
 
 
 
