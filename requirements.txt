@@ -3,3 +3,4 @@ pandas
 mysql-connector-python
 gspread
 google-auth
+pytz
