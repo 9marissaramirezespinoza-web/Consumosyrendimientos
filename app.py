@@ -265,7 +265,7 @@ if st.button("GUARDAR✅"):
         rend = kmr / litros if litros > 0 else 0
         total_importe = (g*precio_gas + m*precio_magna + p*precio_premium + d*precio_diesel)
 
-       fila = (fecha, region, plaza, x["Unidad"], x["_tipo"], x["_modelo"], km_i, km_f, kmr,
+        fila = (fecha, region, plaza, x["Unidad"], x["_tipo"], x["_modelo"], km_i, km_f, kmr,
                 g, g*precio_gas, m, m*precio_magna, p, p*precio_premium,
                 d, d*precio_diesel, litros, total_importe, rend,
                 x["_lim_sup"] if x["_lim_sup"] > 0 else None, 
@@ -283,6 +283,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar: {e}")
+
 
 
 
