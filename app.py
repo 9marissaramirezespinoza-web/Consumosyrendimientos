@@ -260,8 +260,23 @@ if st.button("GUARDAR✅"):
             has_critical_error = True
             break
 
-        # CÁLCULOS SIN RESTRICCIONES (BORRADOS LOS BLOQUES DE 1500KM Y KM MENOR)
+      
+       # --- CÁLCULOS CON REGLAS DE SEGURIDAD ---
         kmr = km_f - km_i
+
+        # REGLA 1: No permitir kilómetros hacia atrás
+        if km_f < km_i:
+            table_messages.error(f"❌ {x['Unidad']}: El Km Final ({km_f}) no puede ser menor al Inicial ({km_i}).")
+            has_critical_error = True
+            break
+
+        # REGLA 2: No permitir más de 1500 km recorridos en un día
+        if kmr > 1500:
+            table_messages.error(f"❌ {x['Unidad']}: El recorrido ({kmr} km) es demasiado alto. Máximo 1500 km.")
+            has_critical_error = True
+            break
+
+        # Si todo está bien, calcula el rendimiento
         rend = kmr / litros if litros > 0 else 0
         total_importe = (g*precio_gas + m*precio_magna + p*precio_premium + d*precio_diesel)
 
@@ -283,6 +298,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar: {e}")
+
 
 
 
