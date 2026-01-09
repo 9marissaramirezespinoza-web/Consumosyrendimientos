@@ -204,7 +204,7 @@ precio_magna = p2.number_input("Precio Magna $", value=0.0, min_value=0.0)
 precio_premium = p3.number_input("Precio Premium $", value=0.0, min_value=0.0)
 precio_diesel = p4.number_input("Precio Diesel $", value=0.0, min_value=0.0)
 
-# ================== CAPTURA ==================
+# ================== CAPTURA (ESTE ES EL BLOQUE COMPLETO) ==================
 kms = ultimo_km()
 filtered_df = df[(df.Region == region) & (df.Plaza == plaza)].copy()
 
@@ -221,28 +221,56 @@ for _, r in filtered_df.iterrows():
     unidad = str(r.Unidad)
     km_previo = kms.get(unidad) 
     km_ini = km_previo if km_previo is not None and km_previo > 0 else float(r["Km inicial"] or 0)
-    rows.append({"Unidad": unidad, "Km Final": "", "Gas (L)": 0.0, "Magna (L)": 0.0, "Premium (L)": 0.0, "Diesel (L)": 0.0,
-                 "_km_ini": km_ini, "_tipo": r.Tipo, "_modelo": r.Modelo, "_lim_sup": r.lim_sup, "_lim_inf": r.lim_inf})
+    
+    # 1. AQUÍ CAMBIAMOS: Km Final empieza en None para que salga vacío y bloquee letras
+    rows.append({
+        "Unidad": unidad, 
+        "Km Final": None, 
+        "Gas (L)": 0.0, 
+        "Magna (L)": 0.0, 
+        "Premium (L)": 0.0, 
+        "Diesel (L)": 0.0,
+        "_km_ini": km_ini, 
+        "_tipo": r.Tipo, 
+        "_modelo": r.Modelo, 
+        "_lim_sup": r.lim_sup, 
+        "_lim_inf": r.lim_inf
+    })
 
-ed = st.data_editor(pd.DataFrame(rows), hide_index=True, column_config={"_km_ini":None, "_tipo":None, "_modelo":None, "_lim_sup":None, "_lim_inf":None})
+# 2. AQUÍ CAMBIAMOS: Agregamos NumberColumn para que NO se puedan escribir letras
+ed = st.data_editor(
+    pd.DataFrame(rows), 
+    hide_index=True, 
+    column_config={
+        "Unidad": st.column_config.TextColumn("Unidad", disabled=True),
+        "Km Final": st.column_config.NumberColumn("Km Final", min_value=0, step=1, format="%d"),
+        "Gas (L)": st.column_config.NumberColumn("Gas (L)", min_value=0.0, format="%.2f"),
+        "Magna (L)": st.column_config.NumberColumn("Magna (L)", min_value=0.0, format="%.2f"),
+        "Premium (L)": st.column_config.NumberColumn("Premium (L)", min_value=0.0, format="%.2f"),
+        "Diesel (L)": st.column_config.NumberColumn("Diesel (L)", min_value=0.0, format="%.2f"),
+        "_km_ini": None, "_tipo": None, "_modelo": None, "_lim_sup": None, "_lim_inf": None
+    }
+)
 table_messages = st.container()
 
-# ================== GUARDAR (LIBRE DE LÍMITES) ==================
+# ================== GUARDAR ==================
 if st.button("GUARDAR✅"):
     if precio_gas <= 0 or precio_magna <= 0 or precio_premium <= 0 or precio_diesel <= 0:
         table_messages.error("❌ ERROR: Debe ingresar los precios de TODOS los combustibles.")
         st.stop()
 
     filas_db, filas_sh = [], []
-    ahora_mzt = datetime.now(tz_mzt) # HORA REAL DE MAZATLÁN
+    ahora_mzt = datetime.now(tz_mzt)
     hora_mx = ahora_mzt.strftime("%H:%M:%S")
-    fecha_mzt = ahora_mzt.date()
     
     has_critical_error = False
     
     for index, x in ed.iterrows():
+        # 3. AQUÍ CAMBIAMOS: Si el Km Final está vacío (None), saltamos la fila
+        if x["Km Final"] is None: 
+            continue
+            
         try:
-            if x["Km Final"] == "": continue
             km_f = float(x["Km Final"])
             km_i = float(x["_km_ini"])
         except:
@@ -253,30 +281,29 @@ if st.button("GUARDAR✅"):
         g, m, p, d = [float(x[c] or 0) for c in ["Gas (L)", "Magna (L)", "Premium (L)", "Diesel (L)"]]
         litros = g + m + p + d
         
-        if litros <= 0 and km_f == km_i: continue
+        # Si no hubo movimiento (km final igual al inicial) y no hay gasolina, ignorar
+        if litros <= 0 and km_f == km_i: 
+            continue
         
+        # REGLA: Si se movió pero no hay litros
         if litros <= 0 and km_f != km_i:
             table_messages.error(f"❌ {x['Unidad']}: Falta capturar litros.")
             has_critical_error = True
             break
 
-      
-       # --- CÁLCULOS CON REGLAS DE SEGURIDAD ---
         kmr = km_f - km_i
 
-        # REGLA 1: No permitir kilómetros hacia atrás
+        # TU REGLA DE KILOMETRAJE SE MANTIENE
         if km_f < km_i:
             table_messages.error(f"❌ {x['Unidad']}: El Km Final ({km_f}) no puede ser menor al Inicial ({km_i}).")
             has_critical_error = True
             break
 
-        # REGLA 2: No permitir más de 1500 km recorridos en un día
         if kmr > 1500:
             table_messages.error(f"❌ {x['Unidad']}: El recorrido ({kmr} km) es demasiado alto. Máximo 1500 km.")
             has_critical_error = True
             break
 
-        # Si todo está bien, calcula el rendimiento
         rend = kmr / litros if litros > 0 else 0
         total_importe = (g*precio_gas + m*precio_magna + p*precio_premium + d*precio_diesel)
 
@@ -298,6 +325,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar: {e}")
+
 
 
 
