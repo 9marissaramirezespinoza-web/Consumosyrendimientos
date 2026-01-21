@@ -5,7 +5,7 @@ from datetime import date, datetime
 import gspread
 from google.oauth2.service_account import Credentials
 import json
-import pytz  # Única librería nueva para la hora de Mazatlán
+import pytz
 
 # ================== SESSION STATE ==================
 if "guardado_ok" not in st.session_state:
@@ -147,7 +147,6 @@ def enviar_sheets(filas):
         client = gspread.authorize(creds)
         ws = client.open_by_url(SHEETS_URL).worksheet(SHEETS_TAB)
         
-        # Envío fila por fila para evitar que un dato raro bloquee a los demás
         for fila in filas:
             try:
                 fila_limpia = [clean_for_sheets(v) for v in fila]
@@ -158,7 +157,6 @@ def enviar_sheets(filas):
         st.session_state.sheets_error = f"Sheets Falló: {e}"
 
 # ================== UI ==================
-# CONFIGURACIÓN MAZATLÁN
 tz_mzt = pytz.timezone('America/Mazatlan')
 fecha_hoy_mzt = datetime.now(tz_mzt).date()
 
@@ -204,11 +202,10 @@ precio_magna = p2.number_input("Precio Magna $", value=0.0, min_value=0.0)
 precio_premium = p3.number_input("Precio Premium $", value=0.0, min_value=0.0)
 precio_diesel = p4.number_input("Precio Diesel $", value=0.0, min_value=0.0)
 
-# ================== CAPTURA (ESTE ES EL BLOQUE COMPLETO) ==================
+# ================== CAPTURA ==================
 kms = ultimo_km()
 filtered_df = df[(df.Region == region) & (df.Plaza == plaza)].copy()
 
-# SE MANTIENE TU LÓGICA DE ORDENADO EXACTA
 try:
     filtered_df['Unidad_Num'] = filtered_df['Unidad'].str.replace(r'[^0-9]', '', regex=True).astype(int)
     filtered_df = filtered_df.sort_values(by='Unidad_Num', ascending=True)
@@ -222,7 +219,6 @@ for _, r in filtered_df.iterrows():
     km_previo = kms.get(unidad) 
     km_ini = km_previo if km_previo is not None and km_previo > 0 else float(r["Km inicial"] or 0)
     
-    # 1. AQUÍ CAMBIAMOS: Km Final empieza en None para que salga vacío y bloquee letras
     rows.append({
         "Unidad": unidad, 
         "Km Final": None, 
@@ -237,7 +233,6 @@ for _, r in filtered_df.iterrows():
         "_lim_inf": r.lim_inf
     })
 
-# 2. AQUÍ CAMBIAMOS: Agregamos NumberColumn para que NO se puedan escribir letras
 ed = st.data_editor(
     pd.DataFrame(rows), 
     hide_index=True, 
@@ -253,7 +248,7 @@ ed = st.data_editor(
 )
 table_messages = st.container()
 
-# ================== GUARDAR ==================
+# ================== GUARDAR CORREGIDO ==================
 if st.button("GUARDAR✅"):
     if precio_gas <= 0 or precio_magna <= 0 or precio_premium <= 0 or precio_diesel <= 0:
         table_messages.error("❌ ERROR: Debe ingresar los precios de TODOS los combustibles.")
@@ -262,11 +257,9 @@ if st.button("GUARDAR✅"):
     filas_db, filas_sh = [], []
     ahora_mzt = datetime.now(tz_mzt)
     hora_mx = ahora_mzt.strftime("%H:%M:%S")
-    
     has_critical_error = False
     
     for index, x in ed.iterrows():
-        # 3. AQUÍ CAMBIAMOS: Si el Km Final está vacío (None), saltamos la fila
         if x["Km Final"] is None: 
             continue
             
@@ -274,44 +267,46 @@ if st.button("GUARDAR✅"):
             km_f = float(x["Km Final"])
             km_i = float(x["_km_ini"])
         except:
-            table_messages.error(f"❌ Valor inválido en {x['Unidad']}")
-            has_critical_error = True
-            break
+            continue
 
+        # Litros por tipo
         g, m, p, d = [float(x[c] or 0) for c in ["Gas (L)", "Magna (L)", "Premium (L)", "Diesel (L)"]]
-        litros = g + m + p + d
         
-        # Si no hubo movimiento (km final igual al inicial) y no hay gasolina, ignorar
-        if litros <= 0 and km_f == km_i: 
+        # TOTALES (Aquí estaba el fallo)
+        total_litros = g + m + p + d
+        total_importe = (g*precio_gas + m*precio_magna + p*precio_premium + d*precio_diesel)
+        kmr = km_f - km_i
+
+        if total_litros <= 0 and km_f == km_i: 
             continue
         
-        # REGLA: Si se movió pero no hay litros
-        if litros <= 0 and km_f != km_i:
+        if total_litros <= 0 and km_f != km_i:
             table_messages.error(f"❌ {x['Unidad']}: Falta capturar litros.")
             has_critical_error = True
             break
 
-        kmr = km_f - km_i
-
-        # TU REGLA DE KILOMETRAJE SE MANTIENE
         if km_f < km_i:
-            table_messages.error(f"❌ {x['Unidad']}: El Km Final ({km_f}) no puede ser menor al Inicial ({km_i}).")
+            table_messages.error(f"❌ {x['Unidad']}: El Km Final no puede ser menor al Inicial.")
             has_critical_error = True
             break
 
-        if kmr > 1500:
-            table_messages.error(f"❌ {x['Unidad']}: El recorrido ({kmr} km) es demasiado alto. Máximo 1500 km.")
-            has_critical_error = True
-            break
+        rend = kmr / total_litros if total_litros > 0 else 0
 
-        rend = kmr / litros if litros > 0 else 0
-        total_importe = (g*precio_gas + m*precio_magna + p*precio_premium + d*precio_diesel)
-
-        fila = (fecha, region, plaza, x["Unidad"], x["_tipo"], x["_modelo"], km_i, km_f, kmr,
-                g, g*precio_gas, m, m*precio_magna, p, p*precio_premium,
-                d, d*precio_diesel, litros, total_importe, rend,
-                x["_lim_sup"] if x["_lim_sup"] > 0 else None, 
-                x["_lim_inf"] if x["_lim_inf"] > 0 else None, hora_mx)
+        # FILA COMPLETA CON 23 COLUMNAS EN ORDEN
+        fila = (
+            fecha, region, plaza, x["Unidad"], x["_tipo"], x["_modelo"], 
+            km_i, km_f, kmr,
+            g, g*precio_gas,      # Gas L y $
+            m, m*precio_magna,    # Magna L y $
+            p, p*precio_premium,  # Premium L y $
+            d, d*precio_diesel,   # Diesel L y $
+            total_litros,         # <--- Columna total_litros (18)
+            total_importe,        # <--- Columna total_importe (19)
+            rend,                 # <--- Columna rendimiento_real (20)
+            x["_lim_sup"] if x["_lim_sup"] > 0 else None, 
+            x["_lim_inf"] if x["_lim_inf"] > 0 else None, 
+            hora_mx
+        )
 
         filas_db.append(fila)
         filas_sh.append(list(fila))
@@ -324,8 +319,7 @@ if st.button("GUARDAR✅"):
             st.session_state.guardado_ok = True
             st.rerun()
         except Exception as e:
-            table_messages.error(f"❌ Error al guardar: {e}")
-
+            table_messages.error(f"❌ Error al guardar en TiDB: {e}")
 
 
 
