@@ -290,6 +290,11 @@ if st.button("GUARDAR✅"):
             has_critical_error = True
             break
 
+        if kmr > 1500:
+            table_messages.error(f"❌ {x['Unidad']}: El recorrido ({kmr} km) es demasiado alto. Máximo 1500 km.")
+            has_critical_error = True
+            break
+
         rend = kmr / total_litros if total_litros > 0 else 0
 
         # FILA COMPLETA CON 23 COLUMNAS EN ORDEN
@@ -320,6 +325,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
