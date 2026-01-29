@@ -290,8 +290,8 @@ if st.button("GUARDAR✅"):
             has_critical_error = True
             break
 
-        if kmr > 1500:
-            table_messages.error(f"❌ {x['Unidad']}: El recorrido ({kmr} km) es demasiado alto. Máximo 1500 km.")
+        if kmr > 1900:
+            table_messages.error(f"❌ {x['Unidad']}: El recorrido ({kmr} km) es demasiado alto. Máximo 1900 km.")
             has_critical_error = True
             break
 
@@ -325,6 +325,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
