@@ -179,7 +179,7 @@ st.title("CONSUMOS Y RENDIMIENTOS 📈")
 tab1, tab2 = st.tabs(["Captura", "Dashboard"])
 
 with tab1:
-if st.session_state.guardado_ok:
+    if st.session_state.guardado_ok:
     st.success("✅ Guardado correctamente en la base de datos.")
     if st.session_state.get("sheets_error"):
          st.warning(f"⚠️ Atención: TiDB guardó, pero la sincronización con Sheets falló: {st.session_state.sheets_error}")
@@ -394,6 +394,7 @@ with tab2:
     st.metric("Unidades fuera de rango", len(tabla_fuera))
 
     st.dataframe(tabla_fuera, use_container_width=True)
+
 
 
 
