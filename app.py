@@ -7,6 +7,14 @@ from google.oauth2.service_account import Credentials
 import json
 import pytz
 
+def safe_float(valor):
+    if valor is None:
+        return 0.0
+    try:
+        return float(valor)
+    except:
+        return 0.0
+
 # ================== SESSION STATE ==================
 if "guardado_ok" not in st.session_state:
     st.session_state.guardado_ok = False
@@ -264,13 +272,18 @@ if st.button("GUARDAR✅"):
             continue
             
         try:
-            km_f = float(x["Km Final"])
-            km_i = float(x["_km_ini"])
+           km_f = safe_float(x["Km Final"])
+           km_i = safe_float(x["_km_ini"])
+
         except:
             continue
 
         # Litros por tipo
-        g, m, p, d = [float(x[c] or 0) for c in ["Gas (L)", "Magna (L)", "Premium (L)", "Diesel (L)"]]
+        g = safe_float(x["Gas (L)"])
+        m = safe_float(x["Magna (L)"])
+        p = safe_float(x["Premium (L)"])
+        d = safe_float(x["Diesel (L)"])
+
         
         # TOTALES (Aquí estaba el fallo)
         total_litros = g + m + p + d
@@ -325,6 +338,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
