@@ -178,12 +178,14 @@ with st.sidebar:
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
 if st.session_state.guardado_ok:
-        st.success("✅ Guardado correctamente en la base de datos.")
-    
+    st.success("✅ Guardado correctamente en la base de datos.")
+
     if st.session_state.get("sheets_error"):
-         st.warning(f"⚠️ Atención: TiDB guardó, pero la sincronización con Sheets falló: {st.session_state.sheets_error}")
-         del st.session_state.sheets_error
-        
+        st.warning(
+            f"⚠️ Atención: TiDB guardó, pero la sincronización con Sheets falló: {st.session_state.sheets_error}"
+        )
+        del st.session_state.sheets_error
+
     st.session_state.guardado_ok = False
 
 df = cargar_catalogo()
@@ -340,6 +342,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
