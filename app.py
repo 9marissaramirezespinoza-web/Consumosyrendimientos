@@ -341,59 +341,8 @@ if st.button("GUARDAR✅"):
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
 
-with tab2:
 
-    st.header("Dashboard de Consumos")
 
-    df_dash = run_select("""
-    SELECT
-        fecha,
-        region,
-        plaza,
-        unidad,
-        total_importe,
-        rendimiento_real,
-        limite_superior,
-        limite_inferior
-    FROM registro_diario
-    """)
-
-    # ================= GASTO POR REGION =================
-    st.subheader("Gasto total por región")
-
-    gasto_region = df_dash.groupby("region")["total_importe"].sum()
-
-    st.pyplot(
-        gasto_region.plot.pie(
-            autopct="%1.1f%%",
-            ylabel=""
-        ).figure
-    )
-
-    # ================= GASTO POR PLAZA =================
-    st.subheader("Gasto total por plaza")
-
-    gasto_plaza = df_dash.groupby("plaza")["total_importe"].sum().sort_values(ascending=False)
-
-    st.bar_chart(gasto_plaza)
-
-    # ================= UNIDADES FUERA =================
-    def fuera_rango(row):
-        if row["rendimiento_real"] < row["limite_inferior"]:
-            return True
-        if row["rendimiento_real"] > row["limite_superior"]:
-            return True
-        return False
-
-    df_dash["fuera_rango"] = df_dash.apply(fuera_rango, axis=1)
-
-    st.subheader("Unidades fuera de cumplimiento")
-
-    tabla_fuera = df_dash[df_dash["fuera_rango"] == True]
-
-    st.metric("Unidades fuera de rango", len(tabla_fuera))
-
-    st.dataframe(tabla_fuera, use_container_width=True)
 
 
 
