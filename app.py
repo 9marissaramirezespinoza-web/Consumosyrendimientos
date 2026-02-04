@@ -206,6 +206,33 @@ with c3: fecha = st.date_input("FECHA", fecha_hoy_mzt, max_value=fecha_hoy_mzt)
 if ya_hay_captura(region, plaza, fecha):
     st.markdown("---")
     st.info("🌟 **Gracias por capturar el día de hoy, nos vemos mañana.**")
+    
+    # --- LÓGICA DE UNIDADES FALTANTES ---
+    # 1. Obtenemos todas las unidades que DEBERÍAN estar (Lista Maestra)
+    unidades_esperadas = set(df[(df.Region == region) & (df.Plaza == plaza)]["Unidad"].unique())
+    
+    # 2. Consultamos qué unidades YA se capturaron hoy en la DB
+    query_hoy = f"""
+        SELECT DISTINCT unidad 
+        FROM registro_diario 
+        WHERE region = '{region}' AND plaza = '{plaza}' AND fecha = '{fecha}'
+    """
+    df_capturadas_hoy = run_select(query_hoy)
+    unidades_capturadas = set(df_capturadas_hoy["unidad"].unique())
+    
+    # 3. Calculamos la diferencia
+    faltantes = sorted(list(unidades_esperadas - unidades_capturadas))
+    
+    # 4. Mostramos el reporte
+    if faltantes:
+        st.warning(f"⚠️ **Atención:** Faltaron de capturar {len(faltantes)} unidades:")
+        # Las mostramos en columnas pequeñas para que no ocupen mucho espacio
+        cols = st.columns(5)
+        for i, unidad_f in enumerate(faltantes):
+            cols[i % 5].write(f"• {unidad_f}")
+    else:
+        st.success("✅ **¡Excelente!** Se capturaron todas las unidades de esta plaza.")
+    
     st.stop()
 
 p1, p2, p3, p4 = st.columns(4)
@@ -342,6 +369,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
