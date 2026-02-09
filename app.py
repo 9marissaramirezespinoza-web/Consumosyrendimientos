@@ -21,6 +21,9 @@ if "guardado_ok" not in st.session_state:
 if "sheets_error" not in st.session_state:
     st.session_state.sheets_error = None
 
+if "modo" not in st.session_state:
+    st.session_state.modo = "normal"
+
 # ================== CONFIG ==================
 st.set_page_config(
     page_title="Consumos y rendimientos",
@@ -170,67 +173,74 @@ tz_mzt = pytz.timezone('America/Mazatlan')
 fecha_hoy_mzt = datetime.now(tz_mzt).date()
 
 with st.sidebar:
+with st.sidebar:
     st.header("🔐 Admin")
-    if st.text_input("Contraseña", type="password") == PASSWORD_ADMIN:
-        if SHEETS_URL:
-            st.markdown(f'<a href="{SHEETS_URL}" target="_blank"><button class="admin-button">📄 Abrir Google Sheets</button></a>', unsafe_allow_html=True)
-        st.stop()
-#EDITOR====================================================
-    st.markdown("---")
-    st.header("✏️ Editar registros")
 
-    if st.text_input("Contraseña editor", type="password") == PASSWORD_EDITOR:
+    password = st.text_input("Contraseña", type="password")
 
-        fecha_edit = st.date_input("Fecha")
-        plaza_edit = st.selectbox("Plaza", sorted(df["Plaza"].unique()))
+    if password == PASSWORD_ADMIN:
+        st.session_state.modo = "editor"
+        st.rerun()
+# ================== PANTALLA EDITOR ==================
+if st.session_state.modo == "editor":
+    st.title("✏️ Editor de registros")
 
-        if st.button("Buscar"):
-            query = f"""
-                SELECT id, fecha, plaza, unidad,
-                       km_inicial, km_final,
-                       gas_l, g_magna_l, g_premium_l, diesel_l
-                FROM registro_diario
-                WHERE fecha = '{fecha_edit}'
-                AND plaza = '{plaza_edit}'
-            """
-            df_edit = run_select(query)
+    fecha_edit = st.date_input("Fecha")
+    plaza_edit = st.selectbox("Plaza", sorted(df["Plaza"].unique()))
 
-            if df_edit.empty:
-                st.warning("No hay registros.")
-            else:
-                editado = st.data_editor(df_edit, hide_index=True)
+    if st.button("Buscar"):
+        query = f"""
+            SELECT id, fecha, plaza, unidad,
+                   km_inicial, km_final,
+                   gas_l, g_magna_l, g_premium_l, diesel_l
+            FROM registro_diario
+            WHERE fecha = '{fecha_edit}'
+            AND plaza = '{plaza_edit}'
+        """
+        df_edit = run_select(query)
 
-                if st.button("Guardar cambios"):
-                    conn = get_connection()
-                    cur = conn.cursor()
+        if df_edit.empty:
+            st.warning("No hay registros.")
+        else:
+            editado = st.data_editor(df_edit, hide_index=True)
 
-                    for _, r in editado.iterrows():
-                        cur.execute("""
-                            UPDATE registro_diario
-                            SET fecha=%s,
-                                km_inicial=%s,
-                                km_final=%s,
-                                gas_l=%s,
-                                g_magna_l=%s,
-                                g_premium_l=%s,
-                                diesel_l=%s
-                            WHERE id=%s
-                        """, (
-                            r["fecha"],
-                            r["km_inicial"],
-                            r["km_final"],
-                            r["gas_l"],
-                            r["g_magna_l"],
-                            r["g_premium_l"],
-                            r["diesel_l"],
-                            r["id"]
-                        ))
+            if st.button("Guardar cambios"):
+                conn = get_connection()
+                cur = conn.cursor()
 
-                    conn.commit()
-                    cur.close()
-                    conn.close()
+                for _, r in editado.iterrows():
+                    cur.execute("""
+                        UPDATE registro_diario
+                        SET fecha=%s,
+                            km_inicial=%s,
+                            km_final=%s,
+                            gas_l=%s,
+                            g_magna_l=%s,
+                            g_premium_l=%s,
+                            diesel_l=%s
+                        WHERE id=%s
+                    """, (
+                        r["fecha"],
+                        r["km_inicial"],
+                        r["km_final"],
+                        r["gas_l"],
+                        r["g_magna_l"],
+                        r["g_premium_l"],
+                        r["diesel_l"],
+                        r["id"]
+                    ))
 
-                    st.success("✅ cambios guardados")
+                conn.commit()
+                cur.close()
+                conn.close()
+
+                st.success("✅ cambios guardados")
+
+    if st.button("⬅ volver"):
+        st.session_state.modo = "normal"
+        st.rerun()
+
+    st.stop()
 
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
@@ -426,6 +436,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
