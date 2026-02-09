@@ -252,9 +252,17 @@ if st.session_state.modo == "editor":
 
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
-# Solo se muestra si entró con tec123
+# ================== PANEL DE ADMINISTRACIÓN (SOLO ADMIN) ==================
 if st.session_state.modo == "admin":
-     st.link_button("📊 Ver Reporte en Google Sheets", "https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit?gid=0#gid=0")
+    with st.container():
+        # Creamos un botón con el estilo verde que definiste arriba
+        st.markdown(f"""
+            <a href="https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit?gid=0#gid=0" target="_blank" style="text-decoration: none;">
+                <div class="admin-button" style="text-align: center; margin-bottom: 20px;">
+                    🟢 GOOGLE SHEETS
+                </div>
+            </a>
+        """, unsafe_allow_html=True)
     
 if st.session_state.guardado_ok:
     st.success("✅ Guardado correctamente en la base de datos.")
@@ -448,6 +456,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
