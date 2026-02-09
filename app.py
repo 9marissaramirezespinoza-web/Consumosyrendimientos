@@ -173,74 +173,90 @@ tz_mzt = pytz.timezone('America/Mazatlan')
 fecha_hoy_mzt = datetime.now(tz_mzt).date()
 
 with st.sidebar:
-    st.header("🔐 Admin")
-
+    st.header("🔐 Acceso")
     password = st.text_input("Contraseña", type="password")
 
+    # Si pone la de admin, entra a captura normal (o lo que tengas planeado)
     if password == PASSWORD_ADMIN:
+        st.session_state.modo = "admin"
+    # Si pone la de editor, entra a la nueva pantalla
+    elif password == PASSWORD_EDITOR:
         st.session_state.modo = "editor"
-        st.rerun()
+    else:
+        st.session_state.modo = "normal"
+
+    if st.session_state.modo != "normal":
+        if st.button("Cerrar Sesión"):
+            st.session_state.modo = "normal"
+            st.rerun()
 # ================== PANTALLA EDITOR ==================
+# ================== PANTALLA EDITOR (NUEVA LÓGICA) ==================
 if st.session_state.modo == "editor":
-    df = cargar_catalogo()
+    st.title("🛠️ Editor de Registros")
 
-    st.title("✏️ Editor de registros")
+    # Filtros para buscar
+    c1, c2 = st.columns(2)
+    with c1:
+        fecha_busqueda = st.date_input("Fecha a editar", fecha_hoy_mzt)
+    with c2:
+        # Cargamos plazas desde el catálogo
+        df_cat = cargar_catalogo()
+        plaza_busqueda = st.selectbox("Plaza a editar", sorted(df_cat["Plaza"].unique()))
 
-    fecha_edit = st.date_input("Fecha")
-    plaza_edit = st.selectbox("Plaza", sorted(df["Plaza"].unique()))
+    # Consulta a la base de datos
+    query = f"""
+        SELECT id, fecha, plaza, unidad, km_inicial, km_final, 
+               gas_l, g_magna_l, g_premium_l, diesel_l 
+        FROM registro_diario 
+        WHERE fecha = '{fecha_busqueda}' AND plaza = '{plaza_busqueda}'
+    """
+    df_para_editar = run_select(query)
 
-    if st.button("Buscar"):
-        query = f"""
-            SELECT id, fecha, plaza, unidad,
-                   km_inicial, km_final,
-                   gas_l, g_magna_l, g_premium_l, diesel_l
-            FROM registro_diario
-            WHERE fecha = '{fecha_edit}'
-            AND plaza = '{plaza_edit}'
-        """
-        df_edit = run_select(query)
+    if df_para_editar.empty:
+        st.warning("No se encontraron registros con esos filtros.")
+    else:
+        st.info("Edita los valores en la tabla y presiona 'Guardar Cambios'.")
+        
+        # Tabla editable
+        # Bloqueamos id, fecha, plaza y unidad para que no los muevan
+        df_editado = st.data_editor(
+            df_para_editar, 
+            hide_index=True,
+            disabled=["id", "fecha", "plaza", "unidad"]
+        )
 
-        if df_edit.empty:
-            st.warning("No hay registros.")
-        else:
-            editado = st.data_editor(df_edit, hide_index=True)
-
-            if st.button("Guardar cambios"):
+        if st.button("💾 Guardar Cambios en Base de Datos"):
+            try:
                 conn = get_connection()
                 cur = conn.cursor()
-
-                for _, r in editado.iterrows():
+                
+                for _, fila in df_editado.iterrows():
                     cur.execute("""
-                        UPDATE registro_diario
-                        SET fecha=%s,
-                            km_inicial=%s,
-                            km_final=%s,
-                            gas_l=%s,
-                            g_magna_l=%s,
-                            g_premium_l=%s,
-                            diesel_l=%s
-                        WHERE id=%s
+                        UPDATE registro_diario 
+                        SET km_inicial = %s, 
+                            km_final = %s, 
+                            gas_l = %s, 
+                            g_magna_l = %s, 
+                            g_premium_l = %s, 
+                            diesel_l = %s
+                        WHERE id = %s
                     """, (
-                        r["fecha"],
-                        r["km_inicial"],
-                        r["km_final"],
-                        r["gas_l"],
-                        r["g_magna_l"],
-                        r["g_premium_l"],
-                        r["diesel_l"],
-                        r["id"]
+                        fila["km_inicial"], fila["km_final"],
+                        fila["gas_l"], fila["g_magna_l"],
+                        fila["g_premium_l"], fila["diesel_l"],
+                        fila["id"]
                     ))
-
+                
                 conn.commit()
                 cur.close()
                 conn.close()
+                
+                st.success("✅ ¡Registros actualizados correctamente!")
+                ultimo_km.clear() # Limpia caché para que la captura nueva vea los cambios
+            except Exception as e:
+                st.error(f"❌ Error al actualizar: {e}")
 
-                st.success("✅ cambios guardados")
-
-    if st.button("⬅ volver"):
-        st.session_state.modo = "normal"
-        st.rerun()
-
+    # Este stop es vital para que NO se muestre el formulario de captura abajo
     st.stop()
 
 
@@ -438,6 +454,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
