@@ -243,6 +243,7 @@ if st.session_state.modo == "editor":
 
     st.stop()
 
+
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
 if st.session_state.guardado_ok:
@@ -437,6 +438,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
