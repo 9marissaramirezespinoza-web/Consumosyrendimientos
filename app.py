@@ -172,20 +172,35 @@ def enviar_sheets(filas):
 tz_mzt = pytz.timezone('America/Mazatlan')
 fecha_hoy_mzt = datetime.now(tz_mzt).date()
 
+# ================== BARRA LATERAL (CONTROL DE ACCESO) ==================
 with st.sidebar:
     st.header("🔐 Acceso")
     password = st.text_input("Contraseña", type="password")
 
-    # Si pone la de admin, entra a captura normal (o lo que tengas planeado)
+    # Lógica de niveles de acceso
     if password == PASSWORD_ADMIN:
         st.session_state.modo = "admin"
-    # Si pone la de editor, entra a la nueva pantalla
     elif password == PASSWORD_EDITOR:
         st.session_state.modo = "editor"
     else:
         st.session_state.modo = "normal"
 
+    # Si hay una sesión activa (Admin o Editor)
     if st.session_state.modo != "normal":
+        st.divider()
+        st.write(f"Sesión: **{st.session_state.modo.upper()}**")
+
+        # BOTÓN VERDE DE SHEETS (Solo si es Admin)
+        if st.session_state.modo == "admin":
+            st.markdown(f"""
+                <a href="https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit?gid=0#gid=0" target="_blank" style="text-decoration: none;">
+                    <div class="admin-button" style="text-align: center; margin-top: 10px; margin-bottom: 10px;">
+                        🟢 GOOGLE SHEETS
+                    </div>
+                </a>
+            """, unsafe_allow_html=True)
+
+        # Botón para salir
         if st.button("Cerrar Sesión"):
             st.session_state.modo = "normal"
             st.rerun()
@@ -456,6 +471,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
