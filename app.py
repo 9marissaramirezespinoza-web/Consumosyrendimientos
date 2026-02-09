@@ -173,7 +173,6 @@ tz_mzt = pytz.timezone('America/Mazatlan')
 fecha_hoy_mzt = datetime.now(tz_mzt).date()
 
 with st.sidebar:
-with st.sidebar:
     st.header("🔐 Admin")
 
     password = st.text_input("Contraseña", type="password")
@@ -436,6 +435,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
