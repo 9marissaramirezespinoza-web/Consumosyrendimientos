@@ -189,79 +189,73 @@ with st.sidebar:
         if st.button("Cerrar Sesión"):
             st.session_state.modo = "normal"
             st.rerun()
-# ================== PANTALLA EDITOR ==================
-# ================== PANTALLA EDITOR (NUEVA LÓGICA) ==================
+# ================== PANTALLA EDITOR (CORREGIDA) ==================
 if st.session_state.modo == "editor":
     st.title("🛠️ Editor de Registros")
+    st.info("Al guardar, el sistema recalcula automáticamente Kilómetros, Importes y Rendimientos.")
 
-    # Filtros para buscar
     c1, c2 = st.columns(2)
     with c1:
         fecha_busqueda = st.date_input("Fecha a editar", fecha_hoy_mzt)
     with c2:
-        # Cargamos plazas desde el catálogo
         df_cat = cargar_catalogo()
         plaza_busqueda = st.selectbox("Plaza a editar", sorted(df_cat["Plaza"].unique()))
 
-    # Consulta a la base de datos
-    query = f"""
-        SELECT id, fecha, plaza, unidad, km_inicial, km_final, 
-               gas_l, g_magna_l, g_premium_l, diesel_l 
-        FROM registro_diario 
-        WHERE fecha = '{fecha_busqueda}' AND plaza = '{plaza_busqueda}'
-    """
+    # Traemos todos los campos para poder recalcular (incluyendo precios guardados)
+    query = f"SELECT * FROM registro_diario WHERE fecha = '{fecha_busqueda}' AND plaza = '{plaza_busqueda}'"
     df_para_editar = run_select(query)
 
     if df_para_editar.empty:
-        st.warning("No se encontraron registros con esos filtros.")
+        st.warning("No se encontraron registros.")
     else:
-        st.info("Edita los valores en la tabla y presiona 'Guardar Cambios'.")
-        
-        # Tabla editable
-        # Bloqueamos id, fecha, plaza y unidad para que no los muevan
+        # Solo permitimos editar KM y Litros
         df_editado = st.data_editor(
             df_para_editar, 
             hide_index=True,
-            disabled=["id", "fecha", "plaza", "unidad"]
+            disabled=[col for col in df_para_editar.columns if col not in ['km_inicial', 'km_final', 'gas_l', 'g_magna_l', 'g_premium_l', 'diesel_l']],
+            use_container_width=True
         )
 
-        if st.button("💾 Guardar Cambios en Base de Datos"):
+        if st.button("💾 Guardar y Recalcular en TiDB"):
             try:
                 conn = get_connection()
                 cur = conn.cursor()
                 
-                for _, fila in df_editado.iterrows():
+                for _, r in df_editado.iterrows():
+                    # --- OPERACIONES MATEMÁTICAS ---
+                    n_km_rec = r['km_final'] - r['km_inicial']
+                    n_litros = r['gas_l'] + r['g_magna_l'] + r['g_premium_l'] + r['diesel_l']
+                    n_importe = (r['gas_l']*r['gas_p']) + (r['g_magna_l']*r['g_magna_p']) + \
+                                (r['g_premium_l']*r['g_premium_p']) + (r['diesel_l']*r['diesel_p'])
+                    n_rend = n_km_rec / n_litros if n_litros > 0 else 0
+
                     cur.execute("""
                         UPDATE registro_diario 
-                        SET km_inicial = %s, 
-                            km_final = %s, 
-                            gas_l = %s, 
-                            g_magna_l = %s, 
-                            g_premium_l = %s, 
-                            diesel_l = %s
-                        WHERE id = %s
-                    """, (
-                        fila["km_inicial"], fila["km_final"],
-                        fila["gas_l"], fila["g_magna_l"],
-                        fila["g_premium_l"], fila["diesel_l"],
-                        fila["id"]
-                    ))
+                        SET km_inicial=%s, km_final=%s, km_recorridos=%s,
+                            gas_l=%s, g_magna_l=%s, g_premium_l=%s, diesel_l=%s,
+                            total_litros=%s, total_importe=%s, rendimiento_real=%s
+                        WHERE id=%s
+                    """, (r['km_inicial'], r['km_final'], n_km_rec, 
+                          r['gas_l'], r['g_magna_l'], r['g_premium_l'], r['diesel_l'],
+                          n_litros, n_importe, n_rend, r['id']))
                 
                 conn.commit()
                 cur.close()
                 conn.close()
-                
-                st.success("✅ ¡Registros actualizados correctamente!")
-                ultimo_km.clear() # Limpia caché para que la captura nueva vea los cambios
+                st.success("✅ ¡Base de datos actualizada con nuevos cálculos!")
+                ultimo_km.clear()
             except Exception as e:
-                st.error(f"❌ Error al actualizar: {e}")
+                st.error(f"❌ Error: {e}")
 
-    # Este stop es vital para que NO se muestre el formulario de captura abajo
-    st.stop()
+    st.stop() # Bloquea el resto para el editor
 
 
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
+# Solo se muestra si entró con tec123
+if st.session_state.modo == "admin":
+    st.link_button("📊 Ver Reporte en Google Sheets", https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit?gid=0#gid=0)
+    
 if st.session_state.guardado_ok:
     st.success("✅ Guardado correctamente en la base de datos.")
 
@@ -454,6 +448,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
