@@ -254,7 +254,7 @@ st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
 # Solo se muestra si entró con tec123
 if st.session_state.modo == "admin":
-    st.link_button("📊 Ver Reporte en Google Sheets",https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit?usp=sharing)
+     st.link_button("📊 Ver Reporte en Google Sheets", "https://docs.google.com/spreadsheets/d/1BHrjyuJcRhof5hp5VzjoGDzbB6i7olcp2mH8DkF3LwE/edit?gid=0#gid=0")
     
 if st.session_state.guardado_ok:
     st.success("✅ Guardado correctamente en la base de datos.")
@@ -448,6 +448,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
