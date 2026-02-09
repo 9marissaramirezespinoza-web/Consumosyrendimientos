@@ -56,6 +56,7 @@ SHEETS_URL = st.secrets.get("SHEETS_URL", "")
 SHEETS_TAB = st.secrets.get("SHEETS_TAB", "REGISTROS")
 
 PASSWORD_ADMIN = "tec123"
+PASSWORD_EDITOR = "edit123"
 
 # ================== DB CONNECTION & EXECUTION ==================
 def get_connection():
@@ -174,6 +175,62 @@ with st.sidebar:
         if SHEETS_URL:
             st.markdown(f'<a href="{SHEETS_URL}" target="_blank"><button class="admin-button">📄 Abrir Google Sheets</button></a>', unsafe_allow_html=True)
         st.stop()
+#EDITOR====================================================
+    st.markdown("---")
+    st.header("✏️ Editar registros")
+
+    if st.text_input("Contraseña editor", type="password") == PASSWORD_EDITOR:
+
+        fecha_edit = st.date_input("Fecha")
+        plaza_edit = st.selectbox("Plaza", sorted(df["Plaza"].unique()))
+
+        if st.button("Buscar"):
+            query = f"""
+                SELECT id, fecha, plaza, unidad,
+                       km_inicial, km_final,
+                       gas_l, g_magna_l, g_premium_l, diesel_l
+                FROM registro_diario
+                WHERE fecha = '{fecha_edit}'
+                AND plaza = '{plaza_edit}'
+            """
+            df_edit = run_select(query)
+
+            if df_edit.empty:
+                st.warning("No hay registros.")
+            else:
+                editado = st.data_editor(df_edit, hide_index=True)
+
+                if st.button("Guardar cambios"):
+                    conn = get_connection()
+                    cur = conn.cursor()
+
+                    for _, r in editado.iterrows():
+                        cur.execute("""
+                            UPDATE registro_diario
+                            SET fecha=%s,
+                                km_inicial=%s,
+                                km_final=%s,
+                                gas_l=%s,
+                                g_magna_l=%s,
+                                g_premium_l=%s,
+                                diesel_l=%s
+                            WHERE id=%s
+                        """, (
+                            r["fecha"],
+                            r["km_inicial"],
+                            r["km_final"],
+                            r["gas_l"],
+                            r["g_magna_l"],
+                            r["g_premium_l"],
+                            r["diesel_l"],
+                            r["id"]
+                        ))
+
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+
+                    st.success("✅ cambios guardados")
 
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
 
@@ -369,6 +426,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
