@@ -200,10 +200,6 @@ with st.sidebar:
                 </a>
             """, unsafe_allow_html=True)
 
-        # Botón para salir
-        if st.button("Cerrar Sesión"):
-            st.session_state.modo = "normal"
-            st.rerun()
 # ================== PANTALLA EDITOR (CORREGIDA) ==================
 if st.session_state.modo == "editor":
     st.title("🛠️ Editor de Registros")
@@ -459,6 +455,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
