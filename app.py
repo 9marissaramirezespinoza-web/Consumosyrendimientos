@@ -181,9 +181,9 @@ with st.sidebar:
         st.session_state.modo = "editor"
         st.rerun()
 # ================== PANTALLA EDITOR ==================
-# ================== PANTALLA EDITOR ==================
 if st.session_state.modo == "editor":
     df = cargar_catalogo()
+
     st.title("✏️ Editor de registros")
 
     fecha_edit = st.date_input("Fecha")
@@ -437,6 +437,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
