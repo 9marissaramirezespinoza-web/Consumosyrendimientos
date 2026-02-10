@@ -338,11 +338,11 @@ if pestana == "Registros":
 
     with c2:
         df_cat = cargar_catalogo()
-        plazas = ["Seleccione"] + sorted(df_cat["Plaza"].dropna().unique())
+        plazas = ["TODAS"] + sorted(df_cat["Plaza"].dropna().unique())
         plaza_filtro = st.selectbox("Plaza", plazas)
 
     with c3:
-        if plaza_filtro == "Seleccione":
+        if plaza_filtro == "TODAS":
             unidades = ["TODAS"]
         else:
             unidades = ["TODAS"] + sorted(
@@ -569,6 +569,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
