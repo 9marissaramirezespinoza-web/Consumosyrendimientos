@@ -217,7 +217,7 @@ if st.session_state.modo == "editor":
 
     with c3:
         unidad_busqueda = st.selectbox(
-            "Unidad (opcional)",
+            "Unidad",
             ["TODAS"] + sorted(df_cat[df_cat["Plaza"] == plaza_busqueda]["Unidad"].unique())
         )
 
@@ -515,6 +515,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
