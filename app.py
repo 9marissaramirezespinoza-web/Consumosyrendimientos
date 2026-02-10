@@ -202,9 +202,8 @@ with st.sidebar:
 
 # ================== PANTALLA EDITOR ==================
 if st.session_state.modo == "editor":
-    st.title("🛠️ Editor de Registros")
-    st.info("Puedes modificar kilómetros y litros. El sistema recalcula automáticamente.")
-
+    st.title("🛠️ Editor de registros")
+    
     # -------- FILTROS ----------
     c1, c2, c3 = st.columns(3)
 
@@ -230,7 +229,7 @@ if st.session_state.modo == "editor":
         AND plaza = '{plaza_busqueda}'
     """
 
-    if unidad_busqueda != "TODAS":
+    if unidad_busqueda != "Seleccione":
         query += f" AND unidad = '{unidad_busqueda}'"
 
     df_para_editar = run_select(query)
@@ -311,7 +310,7 @@ if st.session_state.modo == "editor":
             conn.close()
 
             ultimo_km.clear()
-            st.success("✅ registros actualizados y recalculados correctamente")
+            st.success("✅ Registros actualizados")
 
         except Exception as e:
             st.error(f"❌ error al actualizar: {e}")
@@ -516,6 +515,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
