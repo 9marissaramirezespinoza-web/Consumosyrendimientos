@@ -321,6 +321,60 @@ if st.session_state.modo == "editor":
 
     st.stop()
 
+# ================== MENU PRINCIPAL ==================
+pestana = st.sidebar.radio(
+    "Menú",
+    ["Captura", "Registros"]
+)
+
+# si eligen registros, mostramos consulta y detenemos captura
+if pestana == "Registros":
+    st.title("📋 Consulta de registros")
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        fecha_filtro = st.date_input("Fecha", fecha_hoy_mzt)
+
+    with c2:
+        df_cat = cargar_catalogo()
+        plazas = ["TODAS"] + sorted(df_cat["Plaza"].dropna().unique())
+        plaza_filtro = st.selectbox("Plaza", plazas)
+
+    with c3:
+        if plaza_filtro == "TODAS":
+            unidades = ["TODAS"]
+        else:
+            unidades = ["TODAS"] + sorted(
+                df_cat[df_cat["Plaza"] == plaza_filtro]["Unidad"].unique()
+            )
+
+        unidad_filtro = st.selectbox("Unidad", unidades)
+
+    # -------- QUERY ----------
+    query = f"""
+        SELECT *
+        FROM registro_diario
+        WHERE fecha = '{fecha_filtro}'
+    """
+
+    if plaza_filtro != "TODAS":
+        query += f" AND plaza = '{plaza_filtro}'"
+
+    if unidad_filtro != "TODAS":
+        query += f" AND unidad = '{unidad_filtro}'"
+
+    query += " ORDER BY plaza, unidad"
+
+    df_registros = run_select(query)
+
+    if df_registros.empty:
+        st.warning("No hay información.")
+    else:
+        st.dataframe(df_registros, use_container_width=True)
+
+    st.stop()
+
 st.title("CONSUMOS Y RENDIMIENTOS 📈")
     
 if st.session_state.guardado_ok:
@@ -515,6 +569,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
