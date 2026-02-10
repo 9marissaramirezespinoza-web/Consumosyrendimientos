@@ -343,9 +343,9 @@ if pestana == "Registros":
 
     with c3:
         if plaza_filtro == "Seleccione":
-            unidades = ["Seleccione"]
+            unidades = ["TODAS"]
         else:
-            unidades = ["Seleccione"] + sorted(
+            unidades = ["TODAS"] + sorted(
                 df_cat[df_cat["Plaza"] == plaza_filtro]["Unidad"].unique()
             )
 
@@ -569,6 +569,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
