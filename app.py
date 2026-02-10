@@ -212,13 +212,14 @@ if st.session_state.modo == "editor":
         fecha_busqueda = st.date_input("Fecha", fecha_hoy_mzt)
 
     with c2:
-        df_cat = cargar_catalogo()
-        plaza_busqueda = st.selectbox("Plaza", sorted(df_cat["Plaza"].unique()))
+    df_cat = cargar_catalogo()
+    plazas = ["Seleccione"] + sorted(df_cat["Plaza"].dropna().unique())
+    plaza_busqueda = st.selectbox("Plaza", plazas)
 
     with c3:
         unidad_busqueda = st.selectbox(
             "Unidad",
-            ["TODAS"] + sorted(df_cat[df_cat["Plaza"] == plaza_busqueda]["Unidad"].unique())
+            ["Seleccione"] + sorted(df_cat[df_cat["Plaza"] == plaza_busqueda]["Unidad"].unique())
         )
 
     # -------- QUERY ----------
@@ -515,6 +516,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
