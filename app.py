@@ -270,10 +270,10 @@ if st.session_state.modo == "editor":
                 )
 
                 total_importe = (
-                    safe_float(r["gas_l"]) * safe_float(r["gas_p"]) +
-                    safe_float(r["g_magna_l"]) * safe_float(r["g_magna_p"]) +
-                    safe_float(r["g_premium_l"]) * safe_float(r["g_premium_p"]) +
-                    safe_float(r["diesel_l"]) * safe_float(r["diesel_p"])
+                    safe_float(r["gas_p"]) +
+                    safe_float(r["g_magna_p"]) +
+                    safe_float(r["g_premium_p"]) +
+                    safe_float(r["diesel_p"])
                 )
 
                 rendimiento = km_rec / total_litros if total_litros > 0 else 0
@@ -569,6 +569,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
