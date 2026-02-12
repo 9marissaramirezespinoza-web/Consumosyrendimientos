@@ -241,7 +241,10 @@ if st.session_state.modo == "editor":
     # -------- EDITOR ----------
     columnas_editables = [
         "km_inicial", "km_final",
-        "gas_l", "g_magna_l", "g_premium_l", "diesel_l"
+        "gas_l", "gas_p",
+        "g_magna_l", "g_magna_p",
+        "g_premium_l", "g_premium_p",
+        "diesel_l", "diesel_p"
     ]
 
     df_editado = st.data_editor(
@@ -569,6 +572,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
