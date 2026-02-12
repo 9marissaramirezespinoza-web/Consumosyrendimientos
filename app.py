@@ -23,7 +23,9 @@ if "sheets_error" not in st.session_state:
 
 if "modo" not in st.session_state:
     st.session_state.modo = "normal"
-
+if "fecha_captura" not in st.session_state:
+    st.session_state.fecha_captura = None
+    
 # ================== CONFIG ==================
 st.set_page_config(
     page_title="Consumos y rendimientos",
@@ -404,7 +406,17 @@ region = df[df["REGION_NORM"] == region_param_norm]["Region"].iloc[0]
 c1, c2, c3 = st.columns(3)
 with c1: st.info(f"REGIÓN\n\n**{region}**")
 with c2: plaza = st.selectbox("PLAZA", sorted(df[df["Region"] == region]["Plaza"].unique()))
-with c3: fecha = st.date_input("FECHA", fecha_hoy_mzt, max_value=fecha_hoy_mzt)
+with c3:
+    if st.session_state.fecha_captura is None:
+        st.session_state.fecha_captura = fecha_hoy_mzt
+
+    fecha = st.date_input(
+        "FECHA",
+        value=st.session_state.fecha_captura,
+        max_value=fecha_hoy_mzt
+    )
+
+    st.session_state.fecha_captura = fecha
 
 if ya_hay_captura(region, plaza, fecha):
     st.markdown("---")
@@ -572,6 +584,7 @@ if st.button("GUARDAR✅"):
             st.rerun()
         except Exception as e:
             table_messages.error(f"❌ Error al guardar en TiDB: {e}")
+
 
 
 
